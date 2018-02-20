@@ -269,8 +269,7 @@ private class DefaultPartitionCoalescer(val balanceSlack: Double = 0.10)
     // if we don't have enough partition groups, create duplicates
     while (numCreated < targetLen) {
       val (nxt_replica, nxt_part) = partitionLocs.partsWithLocs(
-        rnd.nextInt(partitionLocs.partsWithLocs.size)
-      )
+        rnd.nextInt(partitionLocs.partsWithLocs.size))
       val pgroup = new PartitionGroup(Some(nxt_replica))
       groupArr += pgroup
       groupHash.getOrElseUpdate(nxt_replica, ArrayBuffer()) += pgroup
