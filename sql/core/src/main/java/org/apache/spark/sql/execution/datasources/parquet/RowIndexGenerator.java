@@ -22,10 +22,15 @@ public class RowIndexGenerator {
     }
 
     public void populateRowIndex(WritableColumnVector columnVector, int numRows) {
+        assert(!columnVector.isAllNull());
         for (int i = 0; i < numRows; i++) {
             columnVector.putLong(i, this.currentBatchStartIndex + i);
         }
         this.currentBatchStartIndex += numRows;
+    }
+
+    public static boolean isRowIndexColumn(ParquetColumn column) {
+        return column.path().length() == 1 && column.path().last().equals(ROW_INDEX_COLUMN_NAME);
     }
 
     // TODO: Needs to account for duplicates or not?
