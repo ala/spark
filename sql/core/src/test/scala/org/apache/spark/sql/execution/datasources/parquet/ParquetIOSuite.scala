@@ -63,6 +63,37 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
     withParquetDataFrame(data)(r => checkAnswer(r, data.map(Row.fromTuple)))
   }
 
+  test("row index generation test") {
+    withTempPaths(2) { paths =>
+      paths.foreach(_.delete())
+      val df = (0 to 10000).toDF("id")
+      val rowIndexColName = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
+
+      val pathWithNoRowIdx = paths.head.getAbsolutePath
+      val pathWithRowIdx = paths(1).getAbsolutePath
+
+      // no row index in schema.
+      df.repartition(1).write.format(dataSourceName).save(pathWithNoRowIdx)
+      val noRowIdxDF = spark.read.format(dataSourceName).load(pathWithNoRowIdx)
+      assert(!noRowIdxDF.columns.contains(rowIndexColName))
+
+      // With row index in schema.
+      val schemaWithRowIdx = df.schema.add(rowIndexColName, LongType, nullable = true)
+
+      df.repartition(1)
+        .write
+        .format(dataSourceName)
+        .option("parquet.block.size", 128) // Force the data to be split into multiple row groups.
+        .save(pathWithRowIdx)
+
+      val dfWithOnePartition = spark.read
+        .format(dataSourceName)
+        .schema(schemaWithRowIdx)
+        .load(pathWithRowIdx)
+      assert(dfWithOnePartition.filter(s"$rowIndexColName != id").count() == 0)
+    }
+  }
+
   test("basic data types (without binary)") {
     val data = (1 to 4).map { i =>
       (i % 2 == 0, i, i.toLong, i.toFloat, i.toDouble)

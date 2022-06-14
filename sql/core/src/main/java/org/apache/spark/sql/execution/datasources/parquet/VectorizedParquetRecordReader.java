@@ -19,10 +19,8 @@ package org.apache.spark.sql.execution.datasources.parquet;
 
 import java.io.IOException;
 import java.time.ZoneId;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+
 import scala.collection.JavaConverters;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -129,6 +127,9 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
    * If true, this class returns batches instead of rows.
    */
   private boolean returnColumnarBatch;
+
+  // TODO: Comment
+  private RowIndexGenerator rowIndexGenerator = null;
 
   /**
    * The memory mode of the columnarBatch
@@ -274,6 +275,8 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
         vectors[i + partitionIdx].setIsConstant();
       }
     }
+
+    rowIndexGenerator = RowIndexGenerator.createIfNeededForSchema(sparkSchema);
   }
 
   private void initBatch() {
@@ -322,6 +325,10 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
         }
       }
       cv.assemble();
+    }
+    // If needed, compute row indexes within a file.
+    if (rowIndexGenerator != null) {
+      rowIndexGenerator.populateRowIndex(columnVectors, num);
     }
 
     rowsReturned += num;
@@ -389,7 +396,9 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
 
   private void checkEndOfRowGroup() throws IOException {
     if (rowsReturned != totalCountLoadedSoFar) return;
+    // Do something here?
     PageReadStore pages = reader.readNextRowGroup();
+    Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
     if (pages == null) {
       throw new IOException("expecting more rows but reached last block. Read "
           + rowsReturned + " out of " + totalRowCount);
