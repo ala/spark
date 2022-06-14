@@ -9,12 +9,12 @@ import org.apache.spark.sql.types.StructType;
  */
 public class RowIndexGenerator {
     private int rowIndexColumnIdx;
-    private long counter;
+    private long currentBatchStartIndex;
     public static String ROW_INDEX_COLUMN_NAME = "_computed_column_row_index";
 
     RowIndexGenerator(int rowIndexColumnIdx) {
         this.rowIndexColumnIdx = rowIndexColumnIdx;
-        this.counter = 0;
+        this.currentBatchStartIndex = 0;
     }
 
     public void populateRowIndex(ParquetColumnVector[] columnVectors, int numRows) {
@@ -23,9 +23,9 @@ public class RowIndexGenerator {
 
     public void populateRowIndex(WritableColumnVector columnVector, int numRows) {
         for (int i = 0; i < numRows; i++) {
-            columnVector.putLong(i, this.counter + i);
+            columnVector.putLong(i, this.currentBatchStartIndex + i);
         }
-        this.counter += numRows;
+        this.currentBatchStartIndex += numRows;
     }
 
     // TODO: Needs to account for duplicates or not?
