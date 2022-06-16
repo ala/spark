@@ -20,7 +20,9 @@ package org.apache.spark.sql.execution.datasources.parquet;
 import java.io.IOException;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.function.LongConsumer;
 
+import org.jetbrains.annotations.NotNull;
 import scala.collection.JavaConverters;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -398,10 +400,37 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
     if (rowsReturned != totalCountLoadedSoFar) return;
     // Do something here?
     PageReadStore pages = reader.readNextRowGroup();
-    Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
     if (pages == null) {
       throw new IOException("expecting more rows but reached last block. Read "
           + rowsReturned + " out of " + totalRowCount);
+    }
+    System.out.println("checkEndRowGroup");
+    Optional<PrimitiveIterator.OfLong> idxs = pages.getRowIndexes();
+    if (idxs.isPresent()) {
+      System.out.print("idxs = ");
+      LongConsumer consumer = new LongConsumer() {
+        @Override
+        public void accept(long value) {
+          System.out.print(" " + value);
+        }
+
+        @NotNull
+        @Override
+        public LongConsumer andThen(@NotNull LongConsumer after) {
+          return this;
+        }
+      };
+      idxs.get().forEachRemaining(consumer);
+      System.out.println();
+    } else {
+      System.out.println("idxs not present");
+    }
+
+    if (rowIndexGenerator != null) {
+        Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
+        assert(rowIndexOffset.isPresent());
+        System.out.println("What we got: " + rowIndexOffset);
+        rowIndexGenerator.setCurrentBatchStartIndex(rowIndexOffset.get());
     }
     for (ParquetColumnVector cv : columnVectors) {
       initColumnReader(pages, cv);

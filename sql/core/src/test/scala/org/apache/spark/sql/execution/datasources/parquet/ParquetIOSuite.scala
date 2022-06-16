@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.parquet
 
+import java.io.File
 import java.time.LocalDateTime
 import java.util.Locale
 
@@ -32,6 +33,8 @@ import org.apache.parquet.column.{Encoding, ParquetProperties}
 import org.apache.parquet.column.ParquetProperties.WriterVersion.PARQUET_1_0
 import org.apache.parquet.example.data.Group
 import org.apache.parquet.example.data.simple.{SimpleGroup, SimpleGroupFactory}
+import org.apache.parquet.format.converter.ParquetMetadataConverter
+import org.apache.parquet.format.converter.ParquetMetadataConverter._
 import org.apache.parquet.hadoop._
 import org.apache.parquet.hadoop.example.ExampleParquetWriter
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
@@ -1568,6 +1571,61 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
     }
   }
 
+  case class RowGroupStat(
+                           idx: Int,
+                           rowCnt: Long,
+                           offset: Long,
+                           byteSize: Long,
+                           isLast: Boolean
+                         )
+
+  def checkRowGroups(path: String, split: Option[(Long, Long)] = None): Seq[RowGroupStat] = {
+    val filter = split match {
+      case Some((start, end)) => ParquetMetadataConverter.range(start, end)
+      case None => NO_FILTER
+    }
+    val footer = ParquetFileReader.readFooter(
+      spark.sessionState.newHadoopConf(),
+      new Path(path),
+      filter)
+
+    /*
+     ParquetReadOptions options = HadoopReadOptions
+      .builder(configuration, file)
+      .withRange(split.getStart(), split.getStart() + split.getLength())
+      .build();
+     */
+    val blocks = footer.getBlocks.asScala
+    blocks.zipWithIndex.map { case (rowGroup, rowGroupIdx) =>
+      val rowCnt = rowGroup.getRowCount()
+      // Number of pages is convoluted to get.
+      val byteSize = rowGroup.getCompressedSize()
+      val offset = rowGroup.getRowIndexOffset()
+      val isLast = (rowGroupIdx + 1 == blocks.size)
+      RowGroupStat(rowGroupIdx, rowCnt, offset, byteSize, isLast)
+    }
+  }
+
+  def listParquetFiles(f: File): Seq[File] = {
+    f.listFiles().filter(_.isFile).filter(_.getName().endsWith("parquet"))
+  }
+
+  def dumpParquetFileInfo(dir: File): Unit = {
+    val files = listParquetFiles(dir)
+    for (f <- files) {
+      println(f.getAbsolutePath)
+      println("full:")
+      for (s <- checkRowGroups(f.getAbsolutePath)) {
+        println(s.toString)
+      }
+      println("filtered:")
+      val length = f.length()
+      for (s <- checkRowGroups(f.getAbsolutePath, Some((length/2, length)))) {
+        println(s.toString)
+      }
+    }
+  }
+
   val defaultRowGroupSize = 128 * 1024 * 1024
   // Test with single file and multiple files.
   for (numFiles <- Seq(1, 10))
@@ -1608,6 +1666,8 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
           .schema(schemaWithRowIdx)
           .load(path.getAbsolutePath)
 
+        dumpParquetFileInfo(path)
+
         val dfToAssert = if (withFilter) {
           // Add a filter such that we skip 60% of the records:
           // [0%, 20%], [40%, 60%], [80%, 100%]
@@ -1635,7 +1695,15 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
           assert(numPartitions >= 2 * numFiles)
         }
 
+        /*
+        [info] - row index generation - numFiles=10, RowGroupSize=64,
+        fileOpenCostInBytes=134217728,withFilter=true *** FAILED *** (16 seconds, 437 milliseconds)
+        [info]   3600 did not equal 0 (ParquetIOSuite.scala:1639)
+        [info]   org.scalatest.exceptions.TestFailedException:
+         */
         // Assert that every rowIdx value matches the value in `expectedRowIdx`.
+        dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol").show(2000000)
+
         assert(dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol")
           .count() == 0)
 

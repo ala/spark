@@ -17,6 +17,10 @@ public class RowIndexGenerator {
         this.currentBatchStartIndex = 0;
     }
 
+    public void setCurrentBatchStartIndex(long currentBatchStartIndex) {
+        this.currentBatchStartIndex = currentBatchStartIndex;
+    }
+
     public void populateRowIndex(ParquetColumnVector[] columnVectors, int numRows) {
         populateRowIndex(columnVectors[this.rowIndexColumnIdx].getValueVector(), numRows);
     }

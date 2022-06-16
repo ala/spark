@@ -21,12 +21,7 @@ package org.apache.spark.sql.execution.datasources.parquet;
 import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import com.google.common.annotations.VisibleForTesting;
 import org.apache.parquet.VersionParser;
@@ -264,9 +259,18 @@ public abstract class SpecificParquetRecordReaderBase<T> extends RecordReader<Vo
       this.reader = reader;
     }
 
+    long numRowGroupsRead = 0;
+    long numRecordsRead = 0;
+
     @Override
     public PageReadStore readNextRowGroup() throws IOException {
-      return reader.readNextFilteredRowGroup();
+      PageReadStore res = reader.readNextFilteredRowGroup();
+      Optional<Long> offset = res.getRowIndexOffset();
+      System.out.println("numRecordsRead = " + numRecordsRead + " numRowGroupsRead = " +
+              numRowGroupsRead + " offset = " + offset);
+      numRecordsRead++;
+      numRowGroupsRead += res.getRowCount();
+      return res;
     }
 
     @Override
