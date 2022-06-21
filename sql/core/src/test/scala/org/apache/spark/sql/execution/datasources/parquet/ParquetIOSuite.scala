@@ -1626,9 +1626,34 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
     }
   }
 
-  val defaultRowGroupSize = 128 * 1024 * 1024
+  case class RowIndexTestConf(
+      useVectorizedReader: Boolean = true,
+      useSmallSplits: Boolean = true,
+      rowGroupSize: Long = RowIndexTestConf.DEFAULT_ROW_GROUP_SIZE
+                             ) {
+
+    def desc: String = Seq(
+      { if (useVectorizedReader) "vectorized reader" else "parquet-mr reader" },
+      { if (use)}
+    ).filter(_.nonEmpty).mkString(", ")
+    def filesMaxPartitionBytes: Long =
+    def sqlConfs: Seq[(String,String)] = Seq(
+      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString
+    )
+  }
+
+  object RowIndexTestConf {
+    val DEFAULT_ROW_GROUP_SIZE = 128 * 1024 * 1024L
+    val SMALL_ROW_GROUP_SIZE = 64L
+  }
+
+  def getRowIndexTestConfigs()
+
+  private val defaultRowGroupSize = 128 * 1024 * 1024
+  for (useVectorizedReader <- Seq(true))
   // Test with single file and multiple files.
-  for (numFiles <- Seq(1, 10))
+  for (numFiles <- Seq(1, 4))
+    // TODO Number of rows must be multiple of numFiles to make this sane.
   // Small row group size -> a file has more than one row group.
   // Large row group size -> a file has only one row group.
   for (rowGroupSize <- Seq(64, defaultRowGroupSize))
@@ -1637,12 +1662,20 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
   for (splitSize <- Seq(64, defaultRowGroupSize))
   // Execute the code path when row groups/files are filtered.
   for (withFilter <- Seq(false, true))
-  test (s"row index generation - numFiles=$numFiles, RowGroupSize=$rowGroupSize," +
-    s"fileOpenCostInBytes=$splitSize," +
-    s"withFilter=$withFilter") {
-    withSQLConf(SQLConf.FILES_MAX_PARTITION_BYTES.key -> s"${
-        if (splitSize == defaultRowGroupSize) rowGroupSize
-        else defaultRowGroupSize}") {
+  // TODO: Figure out a nicer naming scheme
+  // TODO: Add page skipping test!
+  test (s"row index generation - numFiles = $numFiles, RowGroupSize=$rowGroupSize," +
+    s"splitSize=$splitSize," +
+    s"withFilter=$withFilter," +
+    s"withVectorizedReader=$useVectorizedReader") {
+    // TODO: What the heck is going on here?
+    val filesMaxPartitionBytes = if (splitSize == defaultRowGroupSize) {
+      rowGroupSize
+    } else {
+      defaultRowGroupSize
+    }
+    withSQLConf(SQLConf.FILES_MAX_PARTITION_BYTES.key -> filesMaxPartitionBytes.toString,
+      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString) {
       withTempPath { path =>
         val rowIndexColName =
           RowIndexGenerator.ROW_INDEX_COLUMN_NAME
@@ -1704,6 +1737,7 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
         // Assert that every rowIdx value matches the value in `expectedRowIdx`.
         dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol").show(2000000)
 
+        // 1 == 0?
         assert(dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol")
           .count() == 0)
 

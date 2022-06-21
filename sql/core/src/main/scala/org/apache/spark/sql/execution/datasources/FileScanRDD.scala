@@ -95,6 +95,15 @@ class FileScanRDD(
         inputMetrics.setBytesRead(existingBytesRead + getBytesReadCallback())
       }
 
+      {
+        val partitionId = context.partitionId()
+        val numPartitions = context.numPartitions()
+        val fs = split.asInstanceOf[FilePartition].files
+        val size = fs.size
+        val fsDump = fs.map { _.toString }.mkString(" ")
+//        println(s"Partition $partitionId/$numPartitions - $size splits - <$fsDump>")
+      }
+
       private[this] val files = split.asInstanceOf[FilePartition].files.iterator
       private[this] var currentFile: PartitionedFile = null
       private[this] var currentIterator: Iterator[Object] = null
