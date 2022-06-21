@@ -1627,24 +1627,49 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
   }
 
   case class RowIndexTestConf(
+      numRows: Long = 10000L,
+      numFiles: Int = 1,
       useVectorizedReader: Boolean = true,
+      // Small pages allow us to test row indexes when skipping individual pages using column
+      // indexes.
+      useSmallPages: Boolean = false,
+      // If small row groups are used, each file will contain multiple row groups.
+      // Otherwise, each file will contain only one row group.
+      useSmallRowGroups: Boolean = false,
       useSmallSplits: Boolean = true,
-      rowGroupSize: Long = RowIndexTestConf.DEFAULT_ROW_GROUP_SIZE
-                             ) {
+      useFilter: Boolean ) {
+    // The test doesn't work correctly if the number of records per file is uneven.
+    assert(numRows % numFiles == 0)
+
+    private val DEFAULT_ROW_GROUP_SIZE = 128 * 1024 * 1024L
+    private val SMALL_ROW_GROUP_SIZE = 64L
+    private val DEFAULT_PAGE_SIZE = 1024L * 1024L
+    private val SMALL_PAGE_SIZE = 64L
+
+    def rowGroupSize: Long = if (useSmallRowGroups) SMALL_ROW_GROUP_SIZE else DEFAULT_ROW_GROUP_SIZE
+    def pageSize: Long = if (useSmallPages) SMALL_PAGE_SIZE else DEFAULT_PAGE_SIZE
 
     def desc: String = Seq(
       { if (useVectorizedReader) "vectorized reader" else "parquet-mr reader" },
-      { if (use)}
+      { if (useSmallPages) "small pages" else "" },
+      { if (useSmallRowGroups) "small row groups" else "" },
     ).filter(_.nonEmpty).mkString(", ")
-    def filesMaxPartitionBytes: Long =
+
+    // TODO: I don't get it
+    def filesMaxPartitionBytes: Long = if (useSmallSplits) {
+      DEFAULT_ROW_GROUP_SIZE
+    } else {
+      rowGroupSize
+    }
+
     def sqlConfs: Seq[(String,String)] = Seq(
-      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString
+      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString,
+      SQLConf.FILES_MAX_PARTITION_BYTES.key -> filesMaxPartitionBytes.toString
     )
   }
 
   object RowIndexTestConf {
-    val DEFAULT_ROW_GROUP_SIZE = 128 * 1024 * 1024L
-    val SMALL_ROW_GROUP_SIZE = 64L
+
   }
 
   def getRowIndexTestConfigs()
