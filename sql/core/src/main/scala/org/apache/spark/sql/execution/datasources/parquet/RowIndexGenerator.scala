@@ -49,6 +49,10 @@ class RowIndexGenerator(rowIndexColumnIdx: Int) {
 object RowIndexGenerator {
   val ROW_INDEX_COLUMN_NAME = "_computed_column_row_index"
 
+  /**
+   * A wrapper for `ParquetRecordReader` that sets row index column to the correct value in
+   * the returned InternalRow.
+   */
   class RecordReaderWithRowIndexes(parent: ParquetRecordReader[InternalRow], rowIndexColumnIdx: Int)
     extends RecordReader[Void, InternalRow] {
 
