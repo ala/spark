@@ -21,8 +21,7 @@ import org.apache.parquet.hadoop.ParquetRecordReader
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector
-import org.apache.spark.sql.types.StructField
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{LongType, StructField, StructType}
 
 /**
  * Generate row index across batches for a file.
@@ -40,7 +39,7 @@ class RowIndexGenerator(rowIndexColumnIdx: Int) {
 
   def populateRowIndex(columnVector: WritableColumnVector, numRows: Int): Unit = {
     assert(!(columnVector.isAllNull))
-    for (i <- (0 to numRows)) {
+    for (i <- 0 until numRows) {
       columnVector.putLong(i, currentBatchStartIndex + i)
     }
     currentBatchStartIndex += numRows
@@ -88,7 +87,13 @@ object RowIndexGenerator {
   def findColumnIndexInSchema(sparkSchema: StructType): Int = {
     sparkSchema.fields.zipWithIndex.find { case (field: StructField, _: Int) =>
       field.name == ROW_INDEX_COLUMN_NAME
-    }.map(_._2).getOrElse(-1)
+    } match {
+      case Some((field: StructField, idx: Int)) =>
+        // TODO(Ala): Better exception here.
+        if (field.dataType != LongType) throw new RuntimeException("DOn't like")
+        idx
+      case _ => -1
+    }
   }
 
   def isRowIndexColumn(column: ParquetColumn): Boolean = {
@@ -99,13 +104,9 @@ object RowIndexGenerator {
     findColumnIndexInSchema(sparkSchema) >= 0
   }
 
-  // TODO: Check data type
-  // TODO: Check there's not more than one there
-  // TODO: Maybe different name?
   def createIfNeededForSchema(sparkSchema: StructType): RowIndexGenerator = {
     val columnIdx = findColumnIndexInSchema(sparkSchema)
     if (columnIdx >= 0) new RowIndexGenerator(columnIdx)
     else null
   }
-
 }
