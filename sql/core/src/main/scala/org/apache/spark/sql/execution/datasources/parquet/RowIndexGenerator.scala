@@ -24,10 +24,6 @@ import org.apache.spark.sql.execution.vectorized.WritableColumnVector
 import org.apache.spark.sql.types.StructField
 import org.apache.spark.sql.types.StructType
 
-// import org.apache.hadoop.mapreduce.RecordReader
-// import org.apache.parquet.hadoop.ParquetRecordReader
-// import org.apache.spark.sql.catalyst.InternalRow
-
 /**
  * Generate row index across batches for a file.
  */
