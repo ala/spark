@@ -57,11 +57,6 @@ class RecordReaderIterator[T](
     rowReader.getCurrentValue
   }
 
-  def getRowIndex(): Long = {
-    val parquetRowReader = rowReader.asInstanceOf[ParquetRecordReader[T]]
-    parquetRowReader.getCurrentRowIndex()
-  }
-
   override def map[B](f: (T) => B): Iterator[B] with Closeable =
     new Iterator[B] with Closeable {
       override def hasNext: Boolean = RecordReaderIterator.this.hasNext

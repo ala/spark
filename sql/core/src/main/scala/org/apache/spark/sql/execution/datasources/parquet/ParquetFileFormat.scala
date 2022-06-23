@@ -354,7 +354,6 @@ class ParquetFileFormat
             throw e
         }
       } else {
-        // TODO(Ala)
         logDebug(s"Falling back to parquet-mr")
         println("DataSource_V1")
         // ParquetRecordReader returns InternalRow
@@ -380,6 +379,8 @@ class ParquetFileFormat
           val fullSchema = requiredSchema.toAttributes ++ partitionSchema.toAttributes
           val unsafeProjection = GenerateUnsafeProjection.generate(fullSchema, fullSchema)
 
+          // Setting the row index column requires direct access to the underlying
+          // ParquetRecordReader instance.
           val rowIdxColIdx = RowIndexGenerator.findColumnIndexInSchema(requiredSchema)
           val iterWithRowIdx = if (rowIdxColIdx >= 0) {
             iter.map { r =>
@@ -390,13 +391,11 @@ class ParquetFileFormat
             iter
           }
 
-          // TODO: If row index neede do the smae magic.
           if (partitionSchema.length == 0) {
             // There is no partition columns
             iterWithRowIdx.map(unsafeProjection)
           } else {
             val joinedRow = new JoinedRow()
-            // TODO: New fields are added here, but we don't have access to row idx already.
             iterWithRowIdx.map(d => unsafeProjection(joinedRow(d, file.partitionValues)))
           }
 
