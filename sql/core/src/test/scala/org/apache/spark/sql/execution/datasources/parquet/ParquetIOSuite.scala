@@ -1569,61 +1569,6 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
     }
   }
 
-//  case class RowGroupStat(
-//                           idx: Int,
-//                           rowCnt: Long,
-//                           offset: Long,
-//                           byteSize: Long,
-//                           isLast: Boolean
-//                         )
-//
-//  def checkRowGroups(path: String, split: Option[(Long, Long)] = None): Seq[RowGroupStat] = {
-//    val filter = split match {
-//      case Some((start, end)) => ParquetMetadataConverter.range(start, end)
-//      case None => NO_FILTER
-//    }
-//    val footer = ParquetFileReader.readFooter(
-//      spark.sessionState.newHadoopConf(),
-//      new Path(path),
-//      filter)
-//
-//    /*
-//     ParquetReadOptions options = HadoopReadOptions
-//      .builder(configuration, file)
-//      .withRange(split.getStart(), split.getStart() + split.getLength())
-//      .build();
-//     */
-//    val blocks = footer.getBlocks.asScala
-//    blocks.zipWithIndex.map { case (rowGroup, rowGroupIdx) =>
-//      val rowCnt = rowGroup.getRowCount()
-//      // Number of pages is convoluted to get.
-//      val byteSize = rowGroup.getCompressedSize()
-//      val offset = rowGroup.getRowIndexOffset()
-//      val isLast = (rowGroupIdx + 1 == blocks.size)
-//      RowGroupStat(rowGroupIdx, rowCnt, offset, byteSize, isLast)
-//    }
-//  }
-//
-//  def listParquetFiles(f: File): Seq[File] = {
-//    f.listFiles().filter(_.isFile).filter(_.getName().endsWith("parquet"))
-//  }
-//
-//  def dumpParquetFileInfo(dir: File): Unit = {
-//    val files = listParquetFiles(dir)
-//    for (f <- files) {
-//      println(f.getAbsolutePath)
-//      println("full:")
-//      for (s <- checkRowGroups(f.getAbsolutePath)) {
-//        println(s.toString)
-//      }
-//      println("filtered:")
-//      val length = f.length()
-//      for (s <- checkRowGroups(f.getAbsolutePath, Some((length/2, length)))) {
-//        println(s.toString)
-//      }
-//    }
-//  }
-
 //  case class RowIndexTestConf(
 //      numRows: Long = 10000L,
 //      numFiles: Int = 1,
