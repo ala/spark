@@ -20,7 +20,6 @@ package org.apache.spark.sql.execution.datasources
 import java.io.Closeable
 
 import org.apache.hadoop.mapreduce.RecordReader
-import org.apache.parquet.hadoop.ParquetRecordReader
 
 import org.apache.spark.sql.errors.QueryExecutionErrors
 

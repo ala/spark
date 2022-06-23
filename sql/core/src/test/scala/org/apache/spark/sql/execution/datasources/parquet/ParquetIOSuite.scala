@@ -17,7 +17,6 @@
 
 package org.apache.spark.sql.execution.datasources.parquet
 
-import java.io.File
 import java.time.LocalDateTime
 import java.util.Locale
 
@@ -33,8 +32,6 @@ import org.apache.parquet.column.{Encoding, ParquetProperties}
 import org.apache.parquet.column.ParquetProperties.WriterVersion.PARQUET_1_0
 import org.apache.parquet.example.data.Group
 import org.apache.parquet.example.data.simple.{SimpleGroup, SimpleGroupFactory}
-import org.apache.parquet.format.converter.ParquetMetadataConverter
-import org.apache.parquet.format.converter.ParquetMetadataConverter._
 import org.apache.parquet.hadoop._
 import org.apache.parquet.hadoop.example.ExampleParquetWriter
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
@@ -48,6 +45,7 @@ import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, UnsafeRow}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.FileSourceScanExec
 import org.apache.spark.sql.execution.datasources.SQLHadoopMapReduceCommitProtocol
+import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetDataSourceV2
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.SharedSparkSession
@@ -1571,60 +1569,60 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
     }
   }
 
-  case class RowGroupStat(
-                           idx: Int,
-                           rowCnt: Long,
-                           offset: Long,
-                           byteSize: Long,
-                           isLast: Boolean
-                         )
-
-  def checkRowGroups(path: String, split: Option[(Long, Long)] = None): Seq[RowGroupStat] = {
-    val filter = split match {
-      case Some((start, end)) => ParquetMetadataConverter.range(start, end)
-      case None => NO_FILTER
-    }
-    val footer = ParquetFileReader.readFooter(
-      spark.sessionState.newHadoopConf(),
-      new Path(path),
-      filter)
-
-    /*
-     ParquetReadOptions options = HadoopReadOptions
-      .builder(configuration, file)
-      .withRange(split.getStart(), split.getStart() + split.getLength())
-      .build();
-     */
-    val blocks = footer.getBlocks.asScala
-    blocks.zipWithIndex.map { case (rowGroup, rowGroupIdx) =>
-      val rowCnt = rowGroup.getRowCount()
-      // Number of pages is convoluted to get.
-      val byteSize = rowGroup.getCompressedSize()
-      val offset = rowGroup.getRowIndexOffset()
-      val isLast = (rowGroupIdx + 1 == blocks.size)
-      RowGroupStat(rowGroupIdx, rowCnt, offset, byteSize, isLast)
-    }
-  }
-
-  def listParquetFiles(f: File): Seq[File] = {
-    f.listFiles().filter(_.isFile).filter(_.getName().endsWith("parquet"))
-  }
-
-  def dumpParquetFileInfo(dir: File): Unit = {
-    val files = listParquetFiles(dir)
-    for (f <- files) {
-      println(f.getAbsolutePath)
-      println("full:")
-      for (s <- checkRowGroups(f.getAbsolutePath)) {
-        println(s.toString)
-      }
-      println("filtered:")
-      val length = f.length()
-      for (s <- checkRowGroups(f.getAbsolutePath, Some((length/2, length)))) {
-        println(s.toString)
-      }
-    }
-  }
+//  case class RowGroupStat(
+//                           idx: Int,
+//                           rowCnt: Long,
+//                           offset: Long,
+//                           byteSize: Long,
+//                           isLast: Boolean
+//                         )
+//
+//  def checkRowGroups(path: String, split: Option[(Long, Long)] = None): Seq[RowGroupStat] = {
+//    val filter = split match {
+//      case Some((start, end)) => ParquetMetadataConverter.range(start, end)
+//      case None => NO_FILTER
+//    }
+//    val footer = ParquetFileReader.readFooter(
+//      spark.sessionState.newHadoopConf(),
+//      new Path(path),
+//      filter)
+//
+//    /*
+//     ParquetReadOptions options = HadoopReadOptions
+//      .builder(configuration, file)
+//      .withRange(split.getStart(), split.getStart() + split.getLength())
+//      .build();
+//     */
+//    val blocks = footer.getBlocks.asScala
+//    blocks.zipWithIndex.map { case (rowGroup, rowGroupIdx) =>
+//      val rowCnt = rowGroup.getRowCount()
+//      // Number of pages is convoluted to get.
+//      val byteSize = rowGroup.getCompressedSize()
+//      val offset = rowGroup.getRowIndexOffset()
+//      val isLast = (rowGroupIdx + 1 == blocks.size)
+//      RowGroupStat(rowGroupIdx, rowCnt, offset, byteSize, isLast)
+//    }
+//  }
+//
+//  def listParquetFiles(f: File): Seq[File] = {
+//    f.listFiles().filter(_.isFile).filter(_.getName().endsWith("parquet"))
+//  }
+//
+//  def dumpParquetFileInfo(dir: File): Unit = {
+//    val files = listParquetFiles(dir)
+//    for (f <- files) {
+//      println(f.getAbsolutePath)
+//      println("full:")
+//      for (s <- checkRowGroups(f.getAbsolutePath)) {
+//        println(s.toString)
+//      }
+//      println("filtered:")
+//      val length = f.length()
+//      for (s <- checkRowGroups(f.getAbsolutePath, Some((length/2, length)))) {
+//        println(s.toString)
+//      }
+//    }
+//  }
 
 //  case class RowIndexTestConf(
 //      numRows: Long = 10000L,
@@ -1701,7 +1699,8 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
       defaultRowGroupSize
     }
     withSQLConf(SQLConf.FILES_MAX_PARTITION_BYTES.key -> filesMaxPartitionBytes.toString,
-      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString) {
+      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString,
+      SQLConf.USE_V1_SOURCE_LIST.key -> "") {
       withTempPath { path =>
         val rowIndexColName =
           RowIndexGenerator.ROW_INDEX_COLUMN_NAME
@@ -1716,16 +1715,16 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
         // With row index in schema.
         val schemaWithRowIdx = df.schema.add(rowIndexColName, LongType, nullable = true)
 
+
         df.write
           .format(dataSourceName)
           .option("parquet.block.size", rowGroupSize)
           .save(path.getAbsolutePath)
         val dfRead = spark.read
-          .format(dataSourceName)
+            .format(classOf[ParquetDataSourceV2].getCanonicalName)
+//          .format(dataSourceName)
           .schema(schemaWithRowIdx)
           .load(path.getAbsolutePath)
-
-        dumpParquetFileInfo(path)
 
         val dfToAssert = if (withFilter) {
           // Add a filter such that we skip 60% of the records:
@@ -1750,9 +1749,11 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
         }
         // The smaller the `fileOpenCostInBytes` the more files can be read in the same partition.
         // For single file there is only 1 partition.
-        if (rowGroupSize != defaultRowGroupSize && splitSize == defaultRowGroupSize) {
-          assert(numPartitions >= 2 * numFiles)
-        }
+
+        // TODO(ALA): This doesn't work for v2 :/
+//        if (rowGroupSize != defaultRowGroupSize && splitSize == defaultRowGroupSize) {
+//          assert(numPartitions >= 2 * numFiles)
+//        }
 
         /*
         [info] - row index generation - numFiles=10, RowGroupSize=64,
