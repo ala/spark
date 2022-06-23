@@ -355,7 +355,6 @@ class ParquetFileFormat
         }
       } else {
         logDebug(s"Falling back to parquet-mr")
-        println("DataSource_V1")
         // ParquetRecordReader returns InternalRow
         val readSupport = new ParquetReadSupport(
           convertTz,
@@ -368,37 +367,23 @@ class ParquetFileFormat
         } else {
           new ParquetRecordReader[InternalRow](readSupport)
         }
-        val iter = new RecordReaderIterator[InternalRow](reader)
+        val readerWithRowIndexes = RowIndexGenerator.addRowIndexToRecordReader(reader,
+            requiredSchema)
+        val iter = new RecordReaderIterator[InternalRow](readerWithRowIndexes)
         try {
           // The reader here is coming from Parquet!!!
           reader.initialize(split, hadoopAttemptContext)
 
-          println("requiredSchema " + requiredSchema.toString())
-          println("partitionSchema " + partitionSchema.toString())
-
           val fullSchema = requiredSchema.toAttributes ++ partitionSchema.toAttributes
           val unsafeProjection = GenerateUnsafeProjection.generate(fullSchema, fullSchema)
 
-          // Setting the row index column requires direct access to the underlying
-          // ParquetRecordReader instance.
-          val rowIdxColIdx = RowIndexGenerator.findColumnIndexInSchema(requiredSchema)
-          val iterWithRowIdx = if (rowIdxColIdx >= 0) {
-            iter.map { r =>
-              r.setLong(rowIdxColIdx, reader.getCurrentRowIndex)
-              r
-            }
-          } else {
-            iter
-          }
-
           if (partitionSchema.length == 0) {
             // There is no partition columns
-            iterWithRowIdx.map(unsafeProjection)
+            iter.map(unsafeProjection)
           } else {
             val joinedRow = new JoinedRow()
-            iterWithRowIdx.map(d => unsafeProjection(joinedRow(d, file.partitionValues)))
+            iter.map(d => unsafeProjection(joinedRow(d, file.partitionValues)))
           }
-
         } catch {
           case e: Throwable =>
             // SPARK-23457: In case there is an exception in initialization, close the iterator to

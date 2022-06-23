@@ -398,13 +398,11 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
 
   private void checkEndOfRowGroup() throws IOException {
     if (rowsReturned != totalCountLoadedSoFar) return;
-    // Do something here?
     PageReadStore pages = reader.readNextRowGroup();
     if (pages == null) {
       throw new IOException("expecting more rows but reached last block. Read "
           + rowsReturned + " out of " + totalRowCount);
     }
-    System.out.println("checkEndRowGroup");
     Optional<PrimitiveIterator.OfLong> idxs = pages.getRowIndexes();
     if (idxs.isPresent()) {
       System.out.print("idxs = ");
@@ -429,7 +427,6 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
     if (rowIndexGenerator != null) {
         Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
         assert(rowIndexOffset.isPresent());
-        System.out.println("What we got: " + rowIndexOffset);
         rowIndexGenerator.setCurrentBatchStartIndex(rowIndexOffset.get());
     }
     for (ParquetColumnVector cv : columnVectors) {
