@@ -1646,7 +1646,8 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
 //    private val DEFAULT_PAGE_SIZE = 1024L * 1024L
 //    private val SMALL_PAGE_SIZE = 64L
 //
-//    def rowGroupSize: Long = if (useSmallRowGroups) SMALL_ROW_GROUP_SIZE else DEFAULT_ROW_GROUP_SIZE
+//    def rowGroupSize: Long = if (useSmallRowGroups) SMALL_ROW_GROUP_SIZE
+  //    else DEFAULT_ROW_GROUP_SIZE
 //    def pageSize: Long = if (useSmallPages) SMALL_PAGE_SIZE else DEFAULT_PAGE_SIZE
 //
 //    def desc: String = Seq(
@@ -1675,7 +1676,7 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
 //  def getRowIndexTestConfigs()
 
   private val defaultRowGroupSize = 128 * 1024 * 1024
-  for (useVectorizedReader <- Seq(true))
+  for (useVectorizedReader <- Seq(true, false))
   // Test with single file and multiple files.
   for (numFiles <- Seq(1, 4))
     // TODO Number of rows must be multiple of numFiles to make this sane.

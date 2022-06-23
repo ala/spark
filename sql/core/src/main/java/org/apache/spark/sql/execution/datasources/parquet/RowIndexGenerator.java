@@ -38,7 +38,7 @@ public class RowIndexGenerator {
     }
 
     // TODO: Needs to account for duplicates or not?
-    private static int findColumnIndexInSchema(StructType sparkSchema) {
+    static int findColumnIndexInSchema(StructType sparkSchema) {
         for (int i = 0; i < sparkSchema.fields().length; i++) {
             StructField f = sparkSchema.fields()[i];
             if (sparkSchema.fields()[i].name().equals(ROW_INDEX_COLUMN_NAME)) {

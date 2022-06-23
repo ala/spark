@@ -20,6 +20,7 @@ package org.apache.spark.sql.execution.datasources
 import java.io.Closeable
 
 import org.apache.hadoop.mapreduce.RecordReader
+import org.apache.parquet.hadoop.ParquetRecordReader
 
 import org.apache.spark.sql.errors.QueryExecutionErrors
 
@@ -54,6 +55,11 @@ class RecordReaderIterator[T](
     }
     havePair = false
     rowReader.getCurrentValue
+  }
+
+  def getRowIndex(): Long = {
+    val parquetRowReader = rowReader.asInstanceOf[ParquetRecordReader[T]]
+    parquetRowReader.getCurrentRowIndex()
   }
 
   override def map[B](f: (T) => B): Iterator[B] with Closeable =

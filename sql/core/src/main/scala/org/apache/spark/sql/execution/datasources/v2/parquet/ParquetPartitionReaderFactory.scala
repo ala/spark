@@ -271,6 +271,8 @@ case class ParquetPartitionReaderFactory(
   }
 
   private def createRowBaseReader(file: PartitionedFile): RecordReader[Void, InternalRow] = {
+    // TODO(Ala): Here we go again.
+    println("DataSource_V2!")
     buildReaderBase(file, createRowBaseParquetReader)
   }
 
