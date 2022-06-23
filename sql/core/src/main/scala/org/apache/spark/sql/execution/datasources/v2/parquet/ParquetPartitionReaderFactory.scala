@@ -271,8 +271,6 @@ case class ParquetPartitionReaderFactory(
   }
 
   private def createRowBaseReader(file: PartitionedFile): RecordReader[Void, InternalRow] = {
-    // TODO(Ala): Here we go again.
-    println("DataSource_V2! Row-wise")
     buildReaderBase(file, createRowBaseParquetReader)
   }
 
@@ -290,7 +288,6 @@ case class ParquetPartitionReaderFactory(
       enableVectorizedReader = false,
       datetimeRebaseSpec,
       int96RebaseSpec)
-    // TODO(Ala): Need to plug-in the recoerd reader here, but don't have the schema :(
     val reader = if (pushed.isDefined && enableRecordFilter) {
       val parquetFilter = FilterCompat.get(pushed.get, null)
       new ParquetRecordReader[InternalRow](readSupport, parquetFilter)
@@ -299,15 +296,12 @@ case class ParquetPartitionReaderFactory(
     }
     val readerWithRowIndexes = RowIndexGenerator.addRowIndexToRecordReader(reader, readDataSchema)
     val iter = new RecordReaderIterator(readerWithRowIndexes)
-    // TODO(Ala): Use this to slap on row index.
-    // readDataSchema
     // SPARK-23457 Register a task completion listener before `initialization`.
     taskContext.foreach(_.addTaskCompletionListener[Unit](_ => iter.close()))
     readerWithRowIndexes
   }
 
   private def createVectorizedReader(file: PartitionedFile): VectorizedParquetRecordReader = {
-    println("DataSource_V2! Vectorized.")
     val vectorizedReader = buildReaderBase(file, createParquetVectorizedReader)
       .asInstanceOf[VectorizedParquetRecordReader]
     vectorizedReader.initBatch(partitionSchema, file.partitionValues)

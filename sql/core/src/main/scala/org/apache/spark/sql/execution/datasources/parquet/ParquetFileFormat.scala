@@ -371,7 +371,6 @@ class ParquetFileFormat
             requiredSchema)
         val iter = new RecordReaderIterator[InternalRow](readerWithRowIndexes)
         try {
-          // The reader here is coming from Parquet!!!
           reader.initialize(split, hadoopAttemptContext)
 
           val fullSchema = requiredSchema.toAttributes ++ partitionSchema.toAttributes
