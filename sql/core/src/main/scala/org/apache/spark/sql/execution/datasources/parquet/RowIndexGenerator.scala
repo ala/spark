@@ -16,6 +16,10 @@
  */
 package org.apache.spark.sql.execution.datasources.parquet
 
+import java.io.IOException
+
+import scala.collection.JavaConverters._
+
 import org.apache.hadoop.mapreduce.{InputSplit, RecordReader, TaskAttemptContext}
 import org.apache.parquet.column.page.PageReadStore
 import org.apache.parquet.hadoop.ParquetRecordReader
@@ -25,70 +29,33 @@ import org.apache.spark.sql.execution.vectorized.WritableColumnVector
 import org.apache.spark.sql.types.{LongType, StructField, StructType}
 
 /**
- * Generate row index across batches for a file.
+ * Generate row indexes for the vectorized Parquet reader.
  */
 class RowIndexGenerator(rowIndexColumnIdx: Int) {
   var rowIndexIterator: Iterator[Long] = _
 
   def initFromPageReadStore(pages: PageReadStore): Unit = {
-    if (pages.getRowIndexOffset.isEmpty) {
-      // Throw.
+    if (!pages.getRowIndexOffset.isPresent) {
+      throw new IOException("PageReadStore returned no row index offset.")
     }
-    val startingRowIdx = pages.getRowIndexOffset.get()
+    val startingRowIdx: Long = pages.getRowIndexOffset.get()
     if (pages.getRowIndexes.isPresent) {
       // The presence of `getRowIndexes` indicates that page skipping is effective and only
       // a subset of rows in the row group is going to be read. Note that there is a name collision
       // here: these row indexes (unlike ones this class is generating) are counted starting from
       // 0 in each of the row groups.
-      rowIndexIterator = pages.getRowIndexes.get.asInstanceOf[Iterator[Long]]
-        .map(idx => idx + startingRowIdx)
+      rowIndexIterator = pages.getRowIndexes.get.asScala.map(idx => idx + startingRowIdx)
     } else {
       val numRowsInRowGroup = pages.getRowCount
       rowIndexIterator = (startingRowIdx until startingRowIdx + numRowsInRowGroup).iterator
     }
-
-    /*
-        PageReadStore pages = reader.readNextRowGroup();
-    if (pages == null) {
-      throw new IOException("expecting more rows but reached last block. Read "
-          + rowsReturned + " out of " + totalRowCount);
-    }
-    // Give it page read store.
-    Optional<PrimitiveIterator.OfLong> idxs = pages.getRowIndexes();
-    if (idxs.isPresent()) {
-      System.out.print("idxs = ");
-      LongConsumer consumer = new LongConsumer() {
-        @Override
-        public void accept(long value) {
-          System.out.print(" " + value);
-        }
-
-        @NotNull
-        @Override
-        public LongConsumer andThen(@NotNull LongConsumer after) {
-          return this;
-        }
-      };
-      idxs.get().forEachRemaining(consumer);
-      System.out.println();
-    } else {
-      System.out.println("idxs not present");
-    }
-
-    if (rowIndexGenerator != null) {
-        Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
-        assert(rowIndexOffset.isPresent());
-        rowIndexGenerator.setCurrentBatchStartIndex(rowIndexOffset.get());
-    }
-     */
-
   }
 
   def populateRowIndex(columnVectors: Array[ParquetColumnVector], numRows: Int): Unit = {
     populateRowIndex(columnVectors(rowIndexColumnIdx).getValueVector, numRows)
   }
 
-  def populateRowIndex(columnVector: WritableColumnVector, numRows: Int): Unit = {
+  private def populateRowIndex(columnVector: WritableColumnVector, numRows: Int): Unit = {
     assert(!(columnVector.isAllNull))
     for (i <- 0 until numRows) {
       columnVector.putLong(i, rowIndexIterator.next())
@@ -101,9 +68,11 @@ object RowIndexGenerator {
 
   /**
    * A wrapper for `ParquetRecordReader` that sets row index column to the correct value in
-   * the returned InternalRow.
+   * the returned InternalRow. Used in combination with non-vectorized (parquet-mr) Parquet reader.
    */
-  class RecordReaderWithRowIndexes(parent: ParquetRecordReader[InternalRow], rowIndexColumnIdx: Int)
+  private class RecordReaderWithRowIndexes(
+      parent: ParquetRecordReader[InternalRow],
+      rowIndexColumnIdx: Int)
     extends RecordReader[Void, InternalRow] {
 
     override def initialize(
@@ -143,8 +112,9 @@ object RowIndexGenerator {
       field.name == ROW_INDEX_COLUMN_NAME
     } match {
       case Some((field: StructField, idx: Int)) =>
-        // TODO(Ala): Better exception here.
-        if (field.dataType != LongType) throw new RuntimeException("DOn't like")
+        if (field.dataType != LongType) {
+          throw new RuntimeException(s"$ROW_INDEX_COLUMN_NAME must be of LongType")
+        }
         idx
       case _ => -1
     }

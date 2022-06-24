@@ -403,32 +403,8 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
       throw new IOException("expecting more rows but reached last block. Read "
           + rowsReturned + " out of " + totalRowCount);
     }
-    // Give it page read store.
-    Optional<PrimitiveIterator.OfLong> idxs = pages.getRowIndexes();
-    if (idxs.isPresent()) {
-      System.out.print("idxs = ");
-      LongConsumer consumer = new LongConsumer() {
-        @Override
-        public void accept(long value) {
-          System.out.print(" " + value);
-        }
-
-        @NotNull
-        @Override
-        public LongConsumer andThen(@NotNull LongConsumer after) {
-          return this;
-        }
-      };
-      idxs.get().forEachRemaining(consumer);
-      System.out.println();
-    } else {
-      System.out.println("idxs not present");
-    }
-
     if (rowIndexGenerator != null) {
-        Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
-        assert(rowIndexOffset.isPresent());
-        rowIndexGenerator.setCurrentBatchStartIndex(rowIndexOffset.get());
+      rowIndexGenerator.initFromPageReadStore(pages);
     }
     for (ParquetColumnVector cv : columnVectors) {
       initColumnReader(pages, cv);
