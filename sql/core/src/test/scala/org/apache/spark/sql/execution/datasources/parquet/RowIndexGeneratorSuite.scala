@@ -19,10 +19,9 @@ package org.apache.spark.sql.execution.datasources.parquet
 import java.io.File
 
 import scala.collection.JavaConverters._
-
 import org.apache.hadoop.fs.Path
+import org.apache.parquet.column.ParquetProperties
 import org.apache.parquet.hadoop.{ParquetFileReader, ParquetOutputFormat}
-
 import org.apache.spark.sql.QueryTest
 import org.apache.spark.sql.execution.FileSourceScanExec
 import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetDataSourceV2
@@ -79,14 +78,25 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       .map { f => readRowGroupRowCounts(f.getAbsolutePath) }
   }
 
-  val MIN_ROW_GROUP_ROW_COUNT = 100
+  /**
+   * How many rows are expected in Parquet page and row group when their target sizes are set
+   * to extremely low values?
+   */
+  private val MIN_ROW_GROUP_ROW_COUNT = ParquetProperties.DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK
 
+  /**
+   * Do the files contain exactly one row group?
+   */
   private def assertOneRowGroup(dir: File): Unit = {
     readRowGroupRowCounts(dir).foreach { rcs =>
       assert(rcs.length == 1, "expected one row group per file")
     }
   }
 
+  /**
+   * Do the files have a good layout to test row group skipping (both range metadata filter, and
+   * by using min/max).
+   */
   private def assertTinyRowGroups(dir: File): Unit = {
     readRowGroupRowCounts(dir).foreach { rcs =>
       assert(rcs.length > 1, "expected multiple row groups per file")
@@ -96,6 +106,9 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     }
   }
 
+  /**
+   * Do the files have a good layout to test a combination of page skipping and row group skipping?
+   */
   private def assertIntermediateRowGroups(dir: File): Unit = {
     readRowGroupRowCounts(dir).foreach { rcs =>
       assert(rcs.length >= 3, "expected at least 3 row groups per file")
@@ -104,7 +117,6 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       }
     }
   }
-
 
   //  case class RowIndexTestConf(
   //      numRows: Long = 10000L,
