@@ -16,7 +16,12 @@
  */
 package org.apache.spark.sql.execution.datasources.parquet
 
-import org.apache.parquet.hadoop.ParquetOutputFormat
+import java.io.File
+
+import scala.collection.JavaConverters._
+
+import org.apache.hadoop.fs.Path
+import org.apache.parquet.hadoop.{ParquetFileReader, ParquetOutputFormat}
 
 import org.apache.spark.sql.QueryTest
 import org.apache.spark.sql.execution.FileSourceScanExec
@@ -61,6 +66,45 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       assert(dfWithOnePartition.filter(s"$rowIndexColName != id").count() == 0)
     }
   }
+
+  private def readRowGroupRowCounts(path: String): Seq[Long] = {
+    ParquetFileReader.readFooter(spark.sessionState.newHadoopConf(), new Path(path))
+      .getBlocks.asScala.map(_.getRowCount)
+  }
+
+  private def readRowGroupRowCounts(dir: File): Seq[Seq[Long]] = {
+    assert(dir.isDirectory)
+    dir.listFiles()
+      .filter { f => f.isFile && f.getName.endsWith("parquet") }
+      .map { f => readRowGroupRowCounts(f.getAbsolutePath) }
+  }
+
+  val MIN_ROW_GROUP_ROW_COUNT = 100
+
+  private def assertOneRowGroup(dir: File): Unit = {
+    readRowGroupRowCounts(dir).foreach { rcs =>
+      assert(rcs.length == 1, "expected one row group per file")
+    }
+  }
+
+  private def assertTinyRowGroups(dir: File): Unit = {
+    readRowGroupRowCounts(dir).foreach { rcs =>
+      assert(rcs.length > 1, "expected multiple row groups per file")
+      assert(rcs.last <= MIN_ROW_GROUP_ROW_COUNT)
+      assert(rcs.reverse.tail.distinct == Seq(MIN_ROW_GROUP_ROW_COUNT),
+        "expected row groups with minimal row count")
+    }
+  }
+
+  private def assertIntermediateRowGroups(dir: File): Unit = {
+    readRowGroupRowCounts(dir).foreach { rcs =>
+      assert(rcs.length >= 3, "expected at least 3 row groups per file")
+      rcs.reverse.tail.foreach { rc =>
+        assert(rc > MIN_ROW_GROUP_ROW_COUNT, "expected row groups larger than minimal row count")
+      }
+    }
+  }
+
 
   //  case class RowIndexTestConf(
   //      numRows: Long = 10000L,
