@@ -23,7 +23,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
 import scala.collection.JavaConverters;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -131,7 +130,9 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
    */
   private boolean returnColumnarBatch;
 
-  // TODO: Comment
+  /**
+   * Populates the row index column if needed.
+   */
   private RowIndexGenerator rowIndexGenerator = null;
 
   /**
