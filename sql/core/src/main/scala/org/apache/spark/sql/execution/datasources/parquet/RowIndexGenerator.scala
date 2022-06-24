@@ -17,6 +17,7 @@
 package org.apache.spark.sql.execution.datasources.parquet
 
 import org.apache.hadoop.mapreduce.{InputSplit, RecordReader, TaskAttemptContext}
+import org.apache.parquet.column.page.PageReadStore
 import org.apache.parquet.hadoop.ParquetRecordReader
 
 import org.apache.spark.sql.catalyst.InternalRow
@@ -27,10 +28,60 @@ import org.apache.spark.sql.types.{LongType, StructField, StructType}
  * Generate row index across batches for a file.
  */
 class RowIndexGenerator(rowIndexColumnIdx: Int) {
-  var currentBatchStartIndex: Long = 0L
+  var rowIndexIterator: Iterator[Long] = _
 
-  def setCurrentBatchStartIndex(startIndex: Long): Unit = {
-    currentBatchStartIndex = startIndex
+  def initFromPageReadStore(pages: PageReadStore): Unit = {
+    if (pages.getRowIndexOffset.isEmpty) {
+      // Throw.
+    }
+    val startingRowIdx = pages.getRowIndexOffset.get()
+    if (pages.getRowIndexes.isPresent) {
+      // The presence of `getRowIndexes` indicates that page skipping is effective and only
+      // a subset of rows in the row group is going to be read. Note that there is a name collision
+      // here: these row indexes (unlike ones this class is generating) are counted starting from
+      // 0 in each of the row groups.
+      rowIndexIterator = pages.getRowIndexes.get.asInstanceOf[Iterator[Long]]
+        .map(idx => idx + startingRowIdx)
+    } else {
+      val numRowsInRowGroup = pages.getRowCount
+      rowIndexIterator = (startingRowIdx until startingRowIdx + numRowsInRowGroup).iterator
+    }
+
+    /*
+        PageReadStore pages = reader.readNextRowGroup();
+    if (pages == null) {
+      throw new IOException("expecting more rows but reached last block. Read "
+          + rowsReturned + " out of " + totalRowCount);
+    }
+    // Give it page read store.
+    Optional<PrimitiveIterator.OfLong> idxs = pages.getRowIndexes();
+    if (idxs.isPresent()) {
+      System.out.print("idxs = ");
+      LongConsumer consumer = new LongConsumer() {
+        @Override
+        public void accept(long value) {
+          System.out.print(" " + value);
+        }
+
+        @NotNull
+        @Override
+        public LongConsumer andThen(@NotNull LongConsumer after) {
+          return this;
+        }
+      };
+      idxs.get().forEachRemaining(consumer);
+      System.out.println();
+    } else {
+      System.out.println("idxs not present");
+    }
+
+    if (rowIndexGenerator != null) {
+        Optional<Long> rowIndexOffset = pages.getRowIndexOffset();
+        assert(rowIndexOffset.isPresent());
+        rowIndexGenerator.setCurrentBatchStartIndex(rowIndexOffset.get());
+    }
+     */
+
   }
 
   def populateRowIndex(columnVectors: Array[ParquetColumnVector], numRows: Int): Unit = {
@@ -40,9 +91,8 @@ class RowIndexGenerator(rowIndexColumnIdx: Int) {
   def populateRowIndex(columnVector: WritableColumnVector, numRows: Int): Unit = {
     assert(!(columnVector.isAllNull))
     for (i <- 0 until numRows) {
-      columnVector.putLong(i, currentBatchStartIndex + i)
+      columnVector.putLong(i, rowIndexIterator.next())
     }
-    currentBatchStartIndex += numRows
   }
 }
 
