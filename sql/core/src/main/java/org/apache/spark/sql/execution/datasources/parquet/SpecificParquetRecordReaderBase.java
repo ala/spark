@@ -259,18 +259,9 @@ public abstract class SpecificParquetRecordReaderBase<T> extends RecordReader<Vo
       this.reader = reader;
     }
 
-    long numRowGroupsRead = 0;
-    long numRecordsRead = 0;
-
     @Override
     public PageReadStore readNextRowGroup() throws IOException {
-      PageReadStore res = reader.readNextFilteredRowGroup();
-      Optional<Long> offset = res.getRowIndexOffset();
-      System.out.println("numRecordsRead = " + numRecordsRead + " numRowGroupsRead = " +
-              numRowGroupsRead + " offset = " + offset);
-      numRecordsRead++;
-      numRowGroupsRead += res.getRowCount();
-      return res;
+      return reader.readNextFilteredRowGroup();
     }
 
     @Override
