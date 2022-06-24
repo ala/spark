@@ -19,10 +19,11 @@ package org.apache.spark.sql.execution.datasources.parquet;
 
 import java.io.IOException;
 import java.time.ZoneId;
-import java.util.*;
-import java.util.function.LongConsumer;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
-import org.jetbrains.annotations.NotNull;
 import scala.collection.JavaConverters;
 
 import com.google.common.annotations.VisibleForTesting;
