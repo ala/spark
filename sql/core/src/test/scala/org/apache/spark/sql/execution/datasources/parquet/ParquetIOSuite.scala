@@ -1625,18 +1625,21 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
     // TODO Number of rows must be multiple of numFiles to make this sane.
   // Small row group size -> a file has more than one row group.
   // Large row group size -> a file has only one row group.
-  for (rowGroupSize <- Seq(64, defaultRowGroupSize))
+  // for (rowGroupSize <- Seq(64, defaultRowGroupSize))
+    for (rowGroupSize <- Seq(defaultRowGroupSize))
   // Set the FILES_MAX_PARTITION_BYTES equal to `splitSize` to have either
   // one or more tasks reading from the same file.
   for (splitSize <- Seq(64, defaultRowGroupSize))
   // Execute the code path when row groups/files are filtered.
-  for (withFilter <- Seq(false, true))
+  // for (withFilter <- Seq(false, true))
+  for (withFilter <- Seq(true))
+    for (pageSize <- Seq(64, 1024*1024))
   // TODO: Figure out a nicer naming scheme
   // TODO: Add page skipping test!
   test (s"row index generation - numFiles = $numFiles, RowGroupSize=$rowGroupSize," +
     s"splitSize=$splitSize," +
     s"withFilter=$withFilter," +
-    s"withVectorizedReader=$useVectorizedReader") {
+    s"withVectorizedReader=$useVectorizedReader, pageSize = $pageSize") {
     // TODO: What the heck is going on here?
     val filesMaxPartitionBytes = if (splitSize == defaultRowGroupSize) {
       rowGroupSize
@@ -1663,7 +1666,9 @@ class ParquetIOSuite extends QueryTest with ParquetTest with SharedSparkSession 
 
         df.write
           .format(dataSourceName)
-          .option("parquet.block.size", rowGroupSize)
+          .option(ParquetOutputFormat.BLOCK_SIZE, rowGroupSize)
+          .option(ParquetOutputFormat.PAGE_SIZE, pageSize)
+          .option(ParquetOutputFormat.DICTIONARY_PAGE_SIZE, pageSize)
           .save(path.getAbsolutePath)
         val dfRead = spark.read
             .format(classOf[ParquetDataSourceV2].getCanonicalName)

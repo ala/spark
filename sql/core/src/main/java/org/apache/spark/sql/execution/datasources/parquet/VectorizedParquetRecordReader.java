@@ -403,6 +403,7 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
       throw new IOException("expecting more rows but reached last block. Read "
           + rowsReturned + " out of " + totalRowCount);
     }
+    // Give it page read store.
     Optional<PrimitiveIterator.OfLong> idxs = pages.getRowIndexes();
     if (idxs.isPresent()) {
       System.out.print("idxs = ");
