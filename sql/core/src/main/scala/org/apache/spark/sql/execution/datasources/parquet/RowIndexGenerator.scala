@@ -56,7 +56,6 @@ class RowIndexGenerator(rowIndexColumnIdx: Int) {
   }
 
   private def populateRowIndex(columnVector: WritableColumnVector, numRows: Int): Unit = {
-    assert(!(columnVector.isAllNull))
     for (i <- 0 until numRows) {
       columnVector.putLong(i, rowIndexIterator.next())
     }
