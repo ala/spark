@@ -31,7 +31,7 @@ import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetDataSourceV2
 import org.apache.spark.sql.functions.{col, max, min}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.SharedSparkSession
-import org.apache.spark.sql.types.LongType
+import org.apache.spark.sql.types.{LongType, StringType}
 
 class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
   import testImplicits._
@@ -159,8 +159,8 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
         shorter.map(false +: _) ++ shorter.map(true +: _)
       }
     }
-    val combinations = genBooleanArrays(6)
-    combinations.map { c =>
+    // Test min/max & middle byte row group skipping
+    genBooleanArrays(6).map { c =>
       RowIndexTestConf(
         useVectorizedReader = c(0),
         useDataSourceV2 = c(1),
@@ -169,7 +169,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
         useFilter = c(4),
         useSmallSplits = c(5)
       )
-    }
+    } // TODO: PAge skipping
   }
 
   for (conf <- genRowIdxTestConfs)
@@ -273,6 +273,28 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     }
   }
 
-  // TODO: Wrong type.
-  // TODO: Wrong source.
+  for (useDataSourceV2 <- Seq(true, false)) {
+    val conf = RowIndexTestConf(useDataSourceV2 = useDataSourceV2)
+
+    test(s"invalid row index type - ${conf.desc}") {
+      withSQLConf(conf.sqlConfs: _*) {
+        withTempPath{ path =>
+          val df = spark.range(0, 10, 1, 1).toDF("id")
+          val schemaWithRowIdx = df.schema.add(RowIndexGenerator.ROW_INDEX_COLUMN_NAME, StringType)
+
+          df.write
+            .format(conf.writeFormat)
+            .save(path.getAbsolutePath)
+
+          val dfRead = spark.read
+            .format(conf.readFormat)
+            .schema(schemaWithRowIdx)
+            .load(path.getAbsolutePath)
+
+          val exception = intercept[RuntimeException](dfRead.collect())
+          assert(exception.getMessage.contains(RowIndexGenerator.ROW_INDEX_COLUMN_NAME))
+        }
+      }
+    }
+  }
 }
