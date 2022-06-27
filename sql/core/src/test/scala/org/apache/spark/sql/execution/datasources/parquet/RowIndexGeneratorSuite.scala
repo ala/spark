@@ -19,9 +19,12 @@ package org.apache.spark.sql.execution.datasources.parquet
 import java.io.File
 
 import scala.collection.JavaConverters._
+
 import org.apache.hadoop.fs.Path
-import org.apache.parquet.column.ParquetProperties
+import org.apache.parquet.column.ParquetProperties._
 import org.apache.parquet.hadoop.{ParquetFileReader, ParquetOutputFormat}
+import org.apache.parquet.hadoop.ParquetWriter.DEFAULT_BLOCK_SIZE
+
 import org.apache.spark.sql.QueryTest
 import org.apache.spark.sql.execution.FileSourceScanExec
 import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetDataSourceV2
@@ -79,12 +82,6 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
   }
 
   /**
-   * How many rows are expected in Parquet page and row group when their target sizes are set
-   * to extremely low values?
-   */
-  private val MIN_ROW_GROUP_ROW_COUNT = ParquetProperties.DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK
-
-  /**
    * Do the files contain exactly one row group?
    */
   private def assertOneRowGroup(dir: File): Unit = {
@@ -100,8 +97,8 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
   private def assertTinyRowGroups(dir: File): Unit = {
     readRowGroupRowCounts(dir).foreach { rcs =>
       assert(rcs.length > 1, "expected multiple row groups per file")
-      assert(rcs.last <= MIN_ROW_GROUP_ROW_COUNT)
-      assert(rcs.reverse.tail.distinct == Seq(MIN_ROW_GROUP_ROW_COUNT),
+      assert(rcs.last <= DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK)
+      assert(rcs.reverse.tail.distinct == Seq(DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK),
         "expected row groups with minimal row count")
     }
   }
@@ -113,126 +110,135 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     readRowGroupRowCounts(dir).foreach { rcs =>
       assert(rcs.length >= 3, "expected at least 3 row groups per file")
       rcs.reverse.tail.foreach { rc =>
-        assert(rc > MIN_ROW_GROUP_ROW_COUNT, "expected row groups larger than minimal row count")
+        assert(rc > DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK,
+          "expected row groups larger than minimal row count")
       }
     }
   }
 
-  //  case class RowIndexTestConf(
-  //      numRows: Long = 10000L,
-  //      numFiles: Int = 1,
-  //      useVectorizedReader: Boolean = true,
-  //      // Small pages allow us to test row indexes when skipping individual pages using column
-  //      // indexes.
-  //      useSmallPages: Boolean = false,
-  //      // If small row groups are used, each file will contain multiple row groups.
-  //      // Otherwise, each file will contain only one row group.
-  //      useSmallRowGroups: Boolean = false,
-  //      useSmallSplits: Boolean = true,
-  //      useFilter: Boolean ) {
-  //    // The test doesn't work correctly if the number of records per file is uneven.
-  //    assert(numRows % numFiles == 0)
-  //
-  //    private val DEFAULT_ROW_GROUP_SIZE = 128 * 1024 * 1024L
-  //    private val SMALL_ROW_GROUP_SIZE = 64L
-  //    private val DEFAULT_PAGE_SIZE = 1024L * 1024L
-  //    private val SMALL_PAGE_SIZE = 64L
-  //
-  //    def rowGroupSize: Long = if (useSmallRowGroups) SMALL_ROW_GROUP_SIZE
-  //    else DEFAULT_ROW_GROUP_SIZE
-  //    def pageSize: Long = if (useSmallPages) SMALL_PAGE_SIZE else DEFAULT_PAGE_SIZE
-  //
-  //    def desc: String = Seq(
-  //      { if (useVectorizedReader) "vectorized reader" else "parquet-mr reader" },
-  //      { if (useSmallPages) "small pages" else "" },
-  //      { if (useSmallRowGroups) "small row groups" else "" },
-  //    ).filter(_.nonEmpty).mkString(", ")
-  //
-  //    // TODO: I don't get it
-  //    def filesMaxPartitionBytes: Long = if (useSmallSplits) {
-  //      DEFAULT_ROW_GROUP_SIZE
-  //    } else {
-  //      rowGroupSize
-  //    }
-  //
-  //    def sqlConfs: Seq[(String,String)] = Seq(
-  //      SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString,
-  //      SQLConf.FILES_MAX_PARTITION_BYTES.key -> filesMaxPartitionBytes.toString
-  //    )
-  //  }
-  //
-  //  object RowIndexTestConf {
-  //
-  //  }
-  //
-  //  def getRowIndexTestConfigs()
+  case class RowIndexTestConf(
+      numRows: Long = 10000L,
+      useMultipleFiles: Boolean = false,
+      useVectorizedReader: Boolean = true,
+      // Small pages allow us to test row indexes when skipping individual pages using column
+      // indexes.
+      useSmallPages: Boolean = false,
+      // If small row groups are used, each file will contain multiple row groups.
+      // Otherwise, each file will contain only one row group.
+      useSmallRowGroups: Boolean = false,
+      useSmallSplits: Boolean = true,
+      useFilter: Boolean = false,
+      useDataSourceV2: Boolean = false) {
 
-  private val defaultRowGroupSize = 128 * 1024 * 1024
-  for (useVectorizedReader <- Seq(true, false))
-  // Test with single file and multiple files.
-  for (numFiles <- Seq(1, 4))
-  // TODO Number of rows must be multiple of numFiles to make this sane.
-  // Small row group size -> a file has more than one row group.
-  // Large row group size -> a file has only one row group.
-  // for (rowGroupSize <- Seq(64, defaultRowGroupSize))
-  for (rowGroupSize <- Seq(defaultRowGroupSize))
-  // Set the FILES_MAX_PARTITION_BYTES equal to `splitSize` to have either
-  // one or more tasks reading from the same file.
-  for (splitSize <- Seq(64, defaultRowGroupSize))
-  // Execute the code path when row groups/files are filtered.
-  // for (withFilter <- Seq(false, true))
-  for (withFilter <- Seq(true))
-  for (pageSize <- Seq(64, 1024*1024))
-  // TODO: Figure out a nicer naming scheme
-  // TODO: Add page skipping test!
-  test (s"row index generation - numFiles = $numFiles, RowGroupSize=$rowGroupSize," +
-    s"splitSize=$splitSize," +
-    s"withFilter=$withFilter," +
-    s"withVectorizedReader=$useVectorizedReader, pageSize = $pageSize") {
-    // TODO: What the heck is going on here?
-    val filesMaxPartitionBytes = if (splitSize == defaultRowGroupSize) {
-      rowGroupSize
+    val NUM_MULTIPLE_FILES = 4
+    // The test doesn't work correctly if the number of records per file is uneven.
+    assert(!useMultipleFiles || (numRows % NUM_MULTIPLE_FILES == 0))
+
+    def numFiles: Int = if (useMultipleFiles) { NUM_MULTIPLE_FILES } else { 1 }
+
+    def rowGroupSize: Long = if (useSmallRowGroups) {
+      // Each file will contain multiple row groups. All of them (except for the last one)
+      // will contain exactly DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK records.
+      64L
     } else {
-      defaultRowGroupSize
+      // Each file will contain a single row group.
+      DEFAULT_BLOCK_SIZE
     }
-    withSQLConf(SQLConf.FILES_MAX_PARTITION_BYTES.key -> filesMaxPartitionBytes.toString,
+
+    def pageSize: Long = if (useSmallPages) {
+      // Each page (except for the last one for each column) will contain exactly
+      // DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK records.
+      64L
+    } else {
+      DEFAULT_PAGE_SIZE
+    }
+
+    def writeFormat: String = "parquet"
+    def readFormat: String = if (useDataSourceV2) {
+      classOf[ParquetDataSourceV2].getCanonicalName
+    } else {
+      "parquet"
+    }
+
+    // assert(useSmallRowGroups || !useSmallSplits)
+    def filesMaxPartitionBytes: Long = if (useSmallSplits) {
+      256L
+    } else {
+      SQLConf.FILES_MAX_PARTITION_BYTES.defaultValue.get
+    }
+
+    def desc: String = {
+      { if (useVectorizedReader) Seq("vectorized reader") else Seq("parquet-mr reader") } ++
+      { if (useMultipleFiles) Seq("many files") else Seq.empty[String] } ++
+      { if (useFilter) Seq("filtered") else Seq.empty[String] } ++
+      { if (useSmallPages) Seq("small pages") else Seq.empty[String] } ++
+      { if (useSmallRowGroups) Seq("small row groups") else Seq.empty[String] } ++
+      { if (useDataSourceV2) Seq("datasource v2") else Seq.empty[String] }
+    }.mkString(", ")
+
+    def sqlConfs: Seq[(String, String)] = Seq(
       SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString,
-      SQLConf.USE_V1_SOURCE_LIST.key -> "") {
+      SQLConf.FILES_MAX_PARTITION_BYTES.key -> filesMaxPartitionBytes.toString
+    ) ++ { if (useDataSourceV2) Seq(SQLConf.USE_V1_SOURCE_LIST.key -> "") else Seq.empty }
+  }
+
+  def genRowIdxTestConfs: Seq[RowIndexTestConf] = {
+    def genBooleanArrays(length: Int): Seq[Array[Boolean]] = {
+      if (length == 1) {
+        Seq(Seq(true).toArray, Seq(false).toArray)
+      } else {
+        val shorter = genBooleanArrays(length - 1)
+        shorter.map(false +: _) ++ shorter.map(true +: _)
+      }
+    }
+    val combinations = genBooleanArrays(6)
+    combinations.map { c =>
+      RowIndexTestConf(
+        useVectorizedReader = c(0),
+        useDataSourceV2 = c(1),
+        useMultipleFiles = c(2),
+        useSmallRowGroups = c(3),
+        useFilter = c(4),
+        useSmallSplits = c(5)
+      )
+    }
+  }
+
+  for (conf <- genRowIdxTestConfs)
+  test (s"row index generation - ${conf.desc}") {
+    withSQLConf(conf.sqlConfs: _*) {
       withTempPath { path =>
-        val rowIndexColName =
-          RowIndexGenerator.ROW_INDEX_COLUMN_NAME
-        val numRecords = 10000L
-        val numRecordsPerFile = numRecords / numFiles
+        val rowIndexColName = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
+        val numRecordsPerFile = conf.numRows / conf.numFiles
         val (skipCentileFirst, skipCentileMidLeft, skipCentileMidRight, skipCentileLast) =
           (0.2, 0.4, 0.6, 0.8)
         val expectedRowIdxCol = "expected_rowIdx_col"
-        val df = spark.range(0, numRecords, 1, numFiles).toDF("id")
+        val df = spark.range(0, conf.numRows, 1, conf.numFiles).toDF("id")
           .withColumn("dummy_col", ($"id" / 55).cast("int"))
           .withColumn(expectedRowIdxCol, ($"id" % numRecordsPerFile).cast("int"))
+
         // With row index in schema.
         val schemaWithRowIdx = df.schema.add(rowIndexColName, LongType, nullable = true)
 
-
         df.write
-          .format(dataSourceName)
-          .option(ParquetOutputFormat.BLOCK_SIZE, rowGroupSize)
-          .option(ParquetOutputFormat.PAGE_SIZE, pageSize)
-          .option(ParquetOutputFormat.DICTIONARY_PAGE_SIZE, pageSize)
+          .format(conf.writeFormat)
+          .option(ParquetOutputFormat.BLOCK_SIZE, conf.rowGroupSize)
+          .option(ParquetOutputFormat.PAGE_SIZE, conf.pageSize)
+          .option(ParquetOutputFormat.DICTIONARY_PAGE_SIZE, conf.pageSize)
           .save(path.getAbsolutePath)
         val dfRead = spark.read
-          .format(classOf[ParquetDataSourceV2].getCanonicalName)
-          //          .format(dataSourceName)
+          .format(conf.readFormat)
           .schema(schemaWithRowIdx)
           .load(path.getAbsolutePath)
 
-        val dfToAssert = if (withFilter) {
+        val dfToAssert = if (conf.useFilter) {
           // Add a filter such that we skip 60% of the records:
           // [0%, 20%], [40%, 60%], [80%, 100%]
           dfRead.filter((
-            $"id" >= (skipCentileFirst * numRecords) &&
-              $"id" < (skipCentileMidLeft * numRecords)) || (
-            $"id" >= (skipCentileMidRight * numRecords) &&
-              $"id" < (skipCentileLast * numRecords)))
+            $"id" >= (skipCentileFirst * conf.numRows) &&
+              $"id" < (skipCentileMidLeft * conf.numRows)) || (
+            $"id" >= (skipCentileMidRight * conf.numRows) &&
+              $"id" < (skipCentileLast * conf.numRows)))
         } else {
           dfRead
         }
@@ -246,39 +252,27 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
             numOutputRows += f.metrics("numOutputRows").value
           case _ =>
         }
-        // The smaller the `fileOpenCostInBytes` the more files can be read in the same partition.
-        // For single file there is only 1 partition.
 
-        // TODO(ALA): This doesn't work for v2 :/
-        //        if (rowGroupSize != defaultRowGroupSize && splitSize == defaultRowGroupSize) {
-        //          assert(numPartitions >= 2 * numFiles)
-        //        }
+        if (conf.useDataSourceV2 && conf.useSmallSplits) {
+          assert(numPartitions >= 2 * conf.numFiles)
+        }
 
-        /*
-        [info] - row index generation - numFiles=10, RowGroupSize=64,
-        fileOpenCostInBytes=134217728,withFilter=true *** FAILED *** (16 seconds, 437 milliseconds)
-        [info]   3600 did not equal 0 (ParquetIOSuite.scala:1639)
-        [info]   org.scalatest.exceptions.TestFailedException:
-         */
         // Assert that every rowIdx value matches the value in `expectedRowIdx`.
-        dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol").show(2000000)
-
-        // 1 == 0?
         assert(dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol")
           .count() == 0)
 
-        if (withFilter) {
-          if (rowGroupSize < defaultRowGroupSize) {
-            assert(numOutputRows < numRecords)
+        if (conf.useFilter) {
+          if (conf.useSmallRowGroups) {
+            assert(numOutputRows < conf.numRows)
           }
 
           val minMaxRowIndexes = dfToAssert.select(
             max(col(rowIndexColName)),
             min(col(rowIndexColName))).collect()
-          val (expectedMaxRowIdx, expectedMinRowIdx) = if (numFiles == 1) {
+          val (expectedMaxRowIdx, expectedMinRowIdx) = if (conf.numFiles == 1) {
             // When there is a single file, we still have row group skipping,
             // but that should not affect the produced rowIdx.
-            (numRecords * skipCentileLast - 1, numRecords * skipCentileFirst)
+            (conf.numRows * skipCentileLast - 1, conf.numRows * skipCentileFirst)
           } else {
             // For simplicity, the chosen filter skips the whole files.
             // Thus all unskipped files will have the same max and min rowIdx values.
@@ -286,11 +280,11 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
           }
           assert(minMaxRowIndexes(0).get(0) == expectedMaxRowIdx)
           assert(minMaxRowIndexes(0).get(1) == expectedMinRowIdx)
-          if (numFiles == 1) {
-            val skippedValues = List.range(0, (skipCentileFirst * numRecords).toInt) ++
-              List.range((skipCentileMidLeft * numRecords).toInt,
-                (skipCentileMidRight * numRecords).toInt) ++
-              List.range((skipCentileLast * numRecords).toInt, numRecords)
+          if (!conf.useMultipleFiles) {
+            val skippedValues = List.range(0, (skipCentileFirst * conf.numRows).toInt) ++
+              List.range((skipCentileMidLeft * conf.numRows).toInt,
+                (skipCentileMidRight * conf.numRows).toInt) ++
+              List.range((skipCentileLast * conf.numRows).toInt, conf.numRows)
             // rowIdx column should not have any of the `skippedValues`.
             assert(dfToAssert
               .filter(col(rowIndexColName).isin(skippedValues: _*)).count() == 0)
@@ -299,9 +293,12 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
           // When there is no filter, the rowIdx values should be in range [0-`numRecordsPerFile`].
           val expectedRowIdxValues = List.range(0, numRecordsPerFile)
           assert(dfToAssert.filter(col(rowIndexColName).isin(expectedRowIdxValues: _*))
-            .count() == numRecords)
+            .count() == conf.numRows)
         }
       }
     }
   }
+
+  // TODO: Wrong type.
+  // TODO: Wrong source.
 }
