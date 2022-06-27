@@ -173,6 +173,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       { if (useFilter) Seq("filtered") else Seq.empty[String] } ++
       { if (useSmallPages) Seq("small pages") else Seq.empty[String] } ++
       { if (useSmallRowGroups) Seq("small row groups") else Seq.empty[String] } ++
+      { if (useSmallSplits) Seq("small splits") else Seq.empty[String] } ++
       { if (useDataSourceV2) Seq("datasource v2") else Seq.empty[String] }
     }.mkString(", ")
 
@@ -253,7 +254,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
           case _ =>
         }
 
-        if (conf.useDataSourceV2 && conf.useSmallSplits) {
+        if (!conf.useDataSourceV2 && conf.useSmallSplits) {
           assert(numPartitions >= 2 * conf.numFiles)
         }
 
