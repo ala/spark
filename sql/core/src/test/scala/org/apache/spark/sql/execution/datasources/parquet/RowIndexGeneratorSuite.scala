@@ -36,39 +36,6 @@ import org.apache.spark.sql.types.LongType
 class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
   import testImplicits._
 
-  val dataSourceName = "parquet"
-
-  test("row index generation test") {
-    withTempPaths(2) { paths =>
-      paths.foreach(_.delete())
-      val df = (0 to 10000).toDF("id")
-      val rowIndexColName = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
-
-      val pathWithNoRowIdx = paths.head.getAbsolutePath
-      val pathWithRowIdx = paths(1).getAbsolutePath
-
-      // no row index in schema.
-      df.repartition(1).write.format(dataSourceName).save(pathWithNoRowIdx)
-      val noRowIdxDF = spark.read.format(dataSourceName).load(pathWithNoRowIdx)
-      assert(!noRowIdxDF.columns.contains(rowIndexColName))
-
-      // With row index in schema.
-      val schemaWithRowIdx = df.schema.add(rowIndexColName, LongType, nullable = true)
-
-      df.repartition(1)
-        .write
-        .format(dataSourceName)
-        .option("parquet.block.size", 128) // Force the data to be split into multiple row groups.
-        .save(pathWithRowIdx)
-
-      val dfWithOnePartition = spark.read
-        .format(dataSourceName)
-        .schema(schemaWithRowIdx)
-        .load(pathWithRowIdx)
-      assert(dfWithOnePartition.filter(s"$rowIndexColName != id").count() == 0)
-    }
-  }
-
   private def readRowGroupRowCounts(path: String): Seq[Long] = {
     ParquetFileReader.readFooter(spark.sessionState.newHadoopConf(), new Path(path))
       .getBlocks.asScala.map(_.getRowCount)
@@ -231,6 +198,12 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
           .format(conf.readFormat)
           .schema(schemaWithRowIdx)
           .load(path.getAbsolutePath)
+
+        if (conf.useSmallRowGroups) {
+          assertTinyRowGroups(path)
+        } else {
+          assertOneRowGroup(path)
+        }
 
         val dfToAssert = if (conf.useFilter) {
           // Add a filter such that we skip 60% of the records:
