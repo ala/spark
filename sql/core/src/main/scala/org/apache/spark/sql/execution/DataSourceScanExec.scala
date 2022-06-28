@@ -683,6 +683,7 @@ case class FileSourceScanExec(
         // getPath() is very expensive so we only want to call it once in this block:
         val filePath = file.getPath
 
+        // TODO
         if (shouldProcess(filePath)) {
           val isSplitable = relation.fileFormat.isSplitable(
             relation.sparkSession, relation.options, filePath)
