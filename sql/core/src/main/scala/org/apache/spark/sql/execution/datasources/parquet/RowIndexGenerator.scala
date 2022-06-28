@@ -63,7 +63,7 @@ class RowIndexGenerator(rowIndexColumnIdx: Int) {
 }
 
 object RowIndexGenerator {
-  val ROW_INDEX_COLUMN_NAME = "_computed_column_row_index"
+  val ROW_INDEX_COLUMN_NAME = "_metadata_row_index_tmp_column"
 
   /**
    * A wrapper for `ParquetRecordReader` that sets row index column to the correct value in
