@@ -28,6 +28,7 @@ import org.apache.parquet.hadoop.ParquetWriter.DEFAULT_BLOCK_SIZE
 import org.apache.spark.SparkException
 import org.apache.spark.sql.QueryTest
 import org.apache.spark.sql.execution.FileSourceScanExec
+import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetDataSourceV2
 import org.apache.spark.sql.functions.{col, max, min}
 import org.apache.spark.sql.internal.SQLConf
@@ -225,13 +226,18 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
           var numOutputRows: Long = 0
           dfToAssert.collect()
           dfToAssert.queryExecution.executedPlan.foreach {
+            case b: BatchScanExec =>
+              numPartitions += b.inputRDD.partitions.length
+              numOutputRows += b.metrics("numOutputRows").value
             case f: FileSourceScanExec =>
               numPartitions += f.inputRDD.partitions.length
               numOutputRows += f.metrics("numOutputRows").value
             case _ =>
           }
+          assert(numPartitions > 0)
+          assert(numOutputRows > 0)
 
-          if (!conf.useDataSourceV2 && conf.useSmallSplits) {
+          if (conf.useSmallSplits) {
             assert(numPartitions >= 2 * conf.numFiles)
           }
 
