@@ -31,7 +31,7 @@ import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partition
 import org.apache.spark.sql.catalyst.util.{truncatedString, CaseInsensitiveMap}
 import org.apache.spark.sql.errors.QueryExecutionErrors
 import org.apache.spark.sql.execution.datasources._
-import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource}
+import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource, RowIndexGenerator}
 import org.apache.spark.sql.execution.datasources.v2.PushedDownOperators
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.execution.vectorized.ConstantColumnVector
@@ -686,7 +686,8 @@ case class FileSourceScanExec(
         // TODO
         if (shouldProcess(filePath)) {
           val isSplitable = relation.fileFormat.isSplitable(
-            relation.sparkSession, relation.options, filePath)
+              relation.sparkSession, relation.options, filePath) &&
+            !RowIndexGenerator.isNeededForSchema(requiredSchema)
           PartitionedFileUtil.splitFiles(
             sparkSession = relation.sparkSession,
             file = file,
