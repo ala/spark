@@ -25,6 +25,7 @@ import org.apache.parquet.column.ParquetProperties._
 import org.apache.parquet.hadoop.{ParquetFileReader, ParquetOutputFormat}
 import org.apache.parquet.hadoop.ParquetWriter.DEFAULT_BLOCK_SIZE
 
+import org.apache.spark.SparkException
 import org.apache.spark.sql.QueryTest
 import org.apache.spark.sql.execution.FileSourceScanExec
 import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetDataSourceV2
@@ -93,7 +94,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       // If small row groups are used, each file will contain multiple row groups.
       // Otherwise, each file will contain only one row group.
       useSmallRowGroups: Boolean = false,
-      useSmallSplits: Boolean = true,
+      useSmallSplits: Boolean = false,
       useFilter: Boolean = false,
       useDataSourceV2: Boolean = false) {
 
@@ -104,9 +105,16 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     def numFiles: Int = if (useMultipleFiles) { NUM_MULTIPLE_FILES } else { 1 }
 
     def rowGroupSize: Long = if (useSmallRowGroups) {
-      // Each file will contain multiple row groups. All of them (except for the last one)
-      // will contain exactly DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK records.
-      64L
+      if (useSmallPages) {
+        // Each file will contain multiple row groups. All of them (except for the last one)
+        // will contain more than DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK, so that individual
+        // pages within the row group can be skipped.
+        2048L
+      } else {
+        // Each file will contain multiple row groups. All of them (except for the last one)
+        // will contain exactly DEFAULT_MINIMUM_RECORD_COUNT_FOR_CHECK records.
+        64L
+      }
     } else {
       // Each file will contain a single row group.
       DEFAULT_BLOCK_SIZE
@@ -127,7 +135,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       "parquet"
     }
 
-    // assert(useSmallRowGroups || !useSmallSplits)
+    assert(useSmallRowGroups || !useSmallSplits)
     def filesMaxPartitionBytes: Long = if (useSmallSplits) {
       256L
     } else {
@@ -150,124 +158,122 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     ) ++ { if (useDataSourceV2) Seq(SQLConf.USE_V1_SOURCE_LIST.key -> "") else Seq.empty }
   }
 
-  def genRowIdxTestConfs: Seq[RowIndexTestConf] = {
-    def genBooleanArrays(length: Int): Seq[Array[Boolean]] = {
-      if (length == 1) {
-        Seq(Seq(true).toArray, Seq(false).toArray)
-      } else {
-        val shorter = genBooleanArrays(length - 1)
-        shorter.map(false +: _) ++ shorter.map(true +: _)
-      }
-    }
-    // Test min/max & middle byte row group skipping
-    genBooleanArrays(6).map { c =>
-      RowIndexTestConf(
-        useVectorizedReader = c(0),
-        useDataSourceV2 = c(1),
-        useMultipleFiles = c(2),
-        useSmallRowGroups = c(3),
-        useFilter = c(4),
-        useSmallSplits = c(5)
-      )
-    } // TODO: PAge skipping
+  for (useVectorizedReader <- Seq(true, false))
+  for (useDataSourceV2 <- Seq(true, false))
+  for (useSmallRowGroups <- Seq(true, false))
+  for (useSmallPages <- Seq(true, false))
+  for (useFilter <- Seq(true, false))
+  for (useSmallSplits <- Seq(useSmallRowGroups, false).distinct) {
+    val conf = RowIndexTestConf(useVectorizedReader = useVectorizedReader,
+      useDataSourceV2 = useDataSourceV2, useSmallRowGroups = useSmallRowGroups,
+      useSmallPages = useSmallPages, useFilter = useFilter,
+      useSmallSplits = useSmallSplits)
+    testRowIndexGeneration("row index generation", conf)
   }
 
-  for (conf <- genRowIdxTestConfs)
-  test (s"row index generation - ${conf.desc}") {
-    withSQLConf(conf.sqlConfs: _*) {
-      withTempPath { path =>
-        val rowIndexColName = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
-        val numRecordsPerFile = conf.numRows / conf.numFiles
-        val (skipCentileFirst, skipCentileMidLeft, skipCentileMidRight, skipCentileLast) =
-          (0.2, 0.4, 0.6, 0.8)
-        val expectedRowIdxCol = "expected_rowIdx_col"
-        val df = spark.range(0, conf.numRows, 1, conf.numFiles).toDF("id")
-          .withColumn("dummy_col", ($"id" / 55).cast("int"))
-          .withColumn(expectedRowIdxCol, ($"id" % numRecordsPerFile).cast("int"))
+  private def testRowIndexGeneration(label: String, conf: RowIndexTestConf): Unit = {
+    test (s"$label - ${conf.desc}") {
+      withSQLConf(conf.sqlConfs: _*) {
+        withTempPath { path =>
+          val rowIndexColName = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
+          val numRecordsPerFile = conf.numRows / conf.numFiles
+          val (skipCentileFirst, skipCentileMidLeft, skipCentileMidRight, skipCentileLast) =
+            (0.2, 0.4, 0.6, 0.8)
+          val expectedRowIdxCol = "expected_rowIdx_col"
+          val df = spark.range(0, conf.numRows, 1, conf.numFiles).toDF("id")
+            .withColumn("dummy_col", ($"id" / 55).cast("int"))
+            .withColumn(expectedRowIdxCol, ($"id" % numRecordsPerFile).cast("int"))
 
-        // With row index in schema.
-        val schemaWithRowIdx = df.schema.add(rowIndexColName, LongType, nullable = true)
+          // With row index in schema.
+          val schemaWithRowIdx = df.schema.add(rowIndexColName, LongType, nullable = true)
 
-        df.write
-          .format(conf.writeFormat)
-          .option(ParquetOutputFormat.BLOCK_SIZE, conf.rowGroupSize)
-          .option(ParquetOutputFormat.PAGE_SIZE, conf.pageSize)
-          .option(ParquetOutputFormat.DICTIONARY_PAGE_SIZE, conf.pageSize)
-          .save(path.getAbsolutePath)
-        val dfRead = spark.read
-          .format(conf.readFormat)
-          .schema(schemaWithRowIdx)
-          .load(path.getAbsolutePath)
+          df.write
+            .format(conf.writeFormat)
+            .option(ParquetOutputFormat.BLOCK_SIZE, conf.rowGroupSize)
+            .option(ParquetOutputFormat.PAGE_SIZE, conf.pageSize)
+            .option(ParquetOutputFormat.DICTIONARY_PAGE_SIZE, conf.pageSize)
+            .save(path.getAbsolutePath)
+          val dfRead = spark.read
+            .format(conf.readFormat)
+            .schema(schemaWithRowIdx)
+            .load(path.getAbsolutePath)
 
-        if (conf.useSmallRowGroups) {
-          assertTinyRowGroups(path)
-        } else {
-          assertOneRowGroup(path)
-        }
-
-        val dfToAssert = if (conf.useFilter) {
-          // Add a filter such that we skip 60% of the records:
-          // [0%, 20%], [40%, 60%], [80%, 100%]
-          dfRead.filter((
-            $"id" >= (skipCentileFirst * conf.numRows) &&
-              $"id" < (skipCentileMidLeft * conf.numRows)) || (
-            $"id" >= (skipCentileMidRight * conf.numRows) &&
-              $"id" < (skipCentileLast * conf.numRows)))
-        } else {
-          dfRead
-        }
-
-        var numPartitions: Long = 0
-        var numOutputRows: Long = 0
-        dfToAssert.collect()
-        dfToAssert.queryExecution.executedPlan.foreach {
-          case f: FileSourceScanExec =>
-            numPartitions += f.inputRDD.partitions.length
-            numOutputRows += f.metrics("numOutputRows").value
-          case _ =>
-        }
-
-        if (!conf.useDataSourceV2 && conf.useSmallSplits) {
-          assert(numPartitions >= 2 * conf.numFiles)
-        }
-
-        // Assert that every rowIdx value matches the value in `expectedRowIdx`.
-        assert(dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol")
-          .count() == 0)
-
-        if (conf.useFilter) {
+          // Verify that the produced files are laid out as expected.
           if (conf.useSmallRowGroups) {
-            assert(numOutputRows < conf.numRows)
+            if (conf.useSmallPages) {
+              assertIntermediateRowGroups(path)
+            } else {
+              assertTinyRowGroups(path)
+            }
+          } else {
+            assertOneRowGroup(path)
           }
 
-          val minMaxRowIndexes = dfToAssert.select(
-            max(col(rowIndexColName)),
-            min(col(rowIndexColName))).collect()
-          val (expectedMaxRowIdx, expectedMinRowIdx) = if (conf.numFiles == 1) {
-            // When there is a single file, we still have row group skipping,
-            // but that should not affect the produced rowIdx.
-            (conf.numRows * skipCentileLast - 1, conf.numRows * skipCentileFirst)
+          val dfToAssert = if (conf.useFilter) {
+            // Add a filter such that we skip 60% of the records:
+            // [0%, 20%], [40%, 60%], [80%, 100%]
+            dfRead.filter((
+              $"id" >= (skipCentileFirst * conf.numRows) &&
+                $"id" < (skipCentileMidLeft * conf.numRows)) || (
+              $"id" >= (skipCentileMidRight * conf.numRows) &&
+                $"id" < (skipCentileLast * conf.numRows)))
           } else {
-            // For simplicity, the chosen filter skips the whole files.
-            // Thus all unskipped files will have the same max and min rowIdx values.
-            (numRecordsPerFile - 1, 0)
+            dfRead
           }
-          assert(minMaxRowIndexes(0).get(0) == expectedMaxRowIdx)
-          assert(minMaxRowIndexes(0).get(1) == expectedMinRowIdx)
-          if (!conf.useMultipleFiles) {
-            val skippedValues = List.range(0, (skipCentileFirst * conf.numRows).toInt) ++
-              List.range((skipCentileMidLeft * conf.numRows).toInt,
-                (skipCentileMidRight * conf.numRows).toInt) ++
-              List.range((skipCentileLast * conf.numRows).toInt, conf.numRows)
-            // rowIdx column should not have any of the `skippedValues`.
-            assert(dfToAssert
-              .filter(col(rowIndexColName).isin(skippedValues: _*)).count() == 0)
+
+          var numPartitions: Long = 0
+          var numOutputRows: Long = 0
+          dfToAssert.collect()
+          dfToAssert.queryExecution.executedPlan.foreach {
+            case f: FileSourceScanExec =>
+              numPartitions += f.inputRDD.partitions.length
+              numOutputRows += f.metrics("numOutputRows").value
+            case _ =>
           }
-        } else {
-          // When there is no filter, the rowIdx values should be in range [0-`numRecordsPerFile`].
-          val expectedRowIdxValues = List.range(0, numRecordsPerFile)
-          assert(dfToAssert.filter(col(rowIndexColName).isin(expectedRowIdxValues: _*))
-            .count() == conf.numRows)
+
+          if (!conf.useDataSourceV2 && conf.useSmallSplits) {
+            assert(numPartitions >= 2 * conf.numFiles)
+          }
+
+          // Assert that every rowIdx value matches the value in `expectedRowIdx`.
+          assert(dfToAssert.filter(s"$rowIndexColName != $expectedRowIdxCol")
+            .count() == 0)
+
+          if (conf.useFilter) {
+            if (conf.useSmallRowGroups) {
+              assert(numOutputRows < conf.numRows)
+            }
+
+            val minMaxRowIndexes = dfToAssert.select(
+              max(col(rowIndexColName)),
+              min(col(rowIndexColName))).collect()
+            val (expectedMaxRowIdx, expectedMinRowIdx) = if (conf.numFiles == 1) {
+              // When there is a single file, we still have row group skipping,
+              // but that should not affect the produced rowIdx.
+              (conf.numRows * skipCentileLast - 1, conf.numRows * skipCentileFirst)
+            } else {
+              // For simplicity, the chosen filter skips the whole files.
+              // Thus all unskipped files will have the same max and min rowIdx values.
+              (numRecordsPerFile - 1, 0)
+            }
+            assert(minMaxRowIndexes(0).get(0) == expectedMaxRowIdx)
+            assert(minMaxRowIndexes(0).get(1) == expectedMinRowIdx)
+            if (!conf.useMultipleFiles) {
+              val skippedValues = List.range(0, (skipCentileFirst * conf.numRows).toInt) ++
+                List.range((skipCentileMidLeft * conf.numRows).toInt,
+                  (skipCentileMidRight * conf.numRows).toInt) ++
+                List.range((skipCentileLast * conf.numRows).toInt, conf.numRows)
+              // rowIdx column should not have any of the `skippedValues`.
+              assert(dfToAssert
+                .filter(col(rowIndexColName).isin(skippedValues: _*)).count() == 0)
+            }
+          } else {
+            // When there is no filter, the rowIdx values should be in range
+            // [0-`numRecordsPerFile`].
+            val expectedRowIdxValues = List.range(0, numRecordsPerFile)
+            assert(dfToAssert.filter(col(rowIndexColName).isin(expectedRowIdxValues: _*))
+              .count() == conf.numRows)
+          }
         }
       }
     }
@@ -276,7 +282,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
   for (useDataSourceV2 <- Seq(true, false)) {
     val conf = RowIndexTestConf(useDataSourceV2 = useDataSourceV2)
 
-    test(s"invalid row index type - ${conf.desc}") {
+    test(s"invalid row index column type - ${conf.desc}") {
       withSQLConf(conf.sqlConfs: _*) {
         withTempPath{ path =>
           val df = spark.range(0, 10, 1, 1).toDF("id")
@@ -291,7 +297,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
             .schema(schemaWithRowIdx)
             .load(path.getAbsolutePath)
 
-          val exception = intercept[RuntimeException](dfRead.collect())
+          val exception = intercept[SparkException](dfRead.collect())
           assert(exception.getMessage.contains(RowIndexGenerator.ROW_INDEX_COLUMN_NAME))
         }
       }
