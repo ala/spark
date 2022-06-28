@@ -25,7 +25,6 @@ import org.apache.parquet.column.ParquetProperties._
 import org.apache.parquet.hadoop.{ParquetFileReader, ParquetOutputFormat}
 import org.apache.parquet.hadoop.ParquetWriter.DEFAULT_BLOCK_SIZE
 
-import org.apache.spark.SparkException
 import org.apache.spark.sql.QueryTest
 import org.apache.spark.sql.execution.FileSourceScanExec
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -304,7 +303,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
             .schema(schemaWithRowIdx)
             .load(path.getAbsolutePath)
 
-          val exception = intercept[SparkException](dfRead.collect())
+          val exception = intercept[Exception](dfRead.collect())
           assert(exception.getMessage.contains(RowIndexGenerator.ROW_INDEX_COLUMN_NAME))
         }
       }
