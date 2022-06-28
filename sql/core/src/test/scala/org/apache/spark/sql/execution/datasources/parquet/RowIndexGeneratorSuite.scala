@@ -39,7 +39,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
 
   private def readRowGroupRowCounts(path: String): Seq[Long] = {
     ParquetFileReader.readFooter(spark.sessionState.newHadoopConf(), new Path(path))
-      .getBlocks.asScala.map(_.getRowCount)
+      .getBlocks.asScala.toSeq.map(_.getRowCount)
   }
 
   private def readRowGroupRowCounts(dir: File): Seq[Seq[Long]] = {
