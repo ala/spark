@@ -683,10 +683,11 @@ case class FileSourceScanExec(
         // getPath() is very expensive so we only want to call it once in this block:
         val filePath = file.getPath
 
-        // TODO
         if (shouldProcess(filePath)) {
           val isSplitable = relation.fileFormat.isSplitable(
               relation.sparkSession, relation.options, filePath) &&
+            // SPARK-39634: Allow file splitting in combination with row index generation once
+            // the fix for PARQUET-2161 is available.
             !RowIndexGenerator.isNeededForSchema(requiredSchema)
           PartitionedFileUtil.splitFiles(
             sparkSession = relation.sparkSession,
