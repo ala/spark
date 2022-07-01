@@ -88,11 +88,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       numRows: Long = 10000L,
       useMultipleFiles: Boolean = false,
       useVectorizedReader: Boolean = true,
-      // Small pages allow us to test row indexes when skipping individual pages using column
-      // indexes.
       useSmallPages: Boolean = false,
-      // If small row groups are used, each file will contain multiple row groups.
-      // Otherwise, each file will contain only one row group.
       useSmallRowGroups: Boolean = false,
       useSmallSplits: Boolean = false,
       useFilter: Boolean = false,
@@ -213,10 +209,10 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
             // Add a filter such that we skip 60% of the records:
             // [0%, 20%], [40%, 60%], [80%, 100%]
             dfRead.filter((
-              $"id" >= (skipCentileFirst * conf.numRows) &&
-                $"id" < (skipCentileMidLeft * conf.numRows)) || (
-              $"id" >= (skipCentileMidRight * conf.numRows) &&
-                $"id" < (skipCentileLast * conf.numRows)))
+              $"id" >= (skipCentileFirst * conf.numRows).toInt &&
+                $"id" < (skipCentileMidLeft * conf.numRows).toInt) || (
+              $"id" >= (skipCentileMidRight * conf.numRows).toInt &&
+                $"id" < (skipCentileLast * conf.numRows).toInt))
           } else {
             dfRead
           }
@@ -249,7 +245,6 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
 
           if (conf.useFilter) {
             if (conf.useSmallRowGroups) {
-              // todo(fix after...)
               assert(numOutputRows < conf.numRows)
             }
 
@@ -277,6 +272,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
                 .filter(col(rowIndexColName).isin(skippedValues: _*)).count() == 0)
             }
           } else {
+            assert(numOutputRows == conf.numRows)
             // When there is no filter, the rowIdx values should be in range
             // [0-`numRecordsPerFile`].
             val expectedRowIdxValues = List.range(0, numRecordsPerFile)
