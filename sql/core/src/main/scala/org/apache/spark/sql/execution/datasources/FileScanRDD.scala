@@ -32,9 +32,10 @@ import org.apache.spark.sql.catalyst.expressions.{AttributeReference, GenericInt
 import org.apache.spark.sql.catalyst.util.CaseInsensitiveMap
 import org.apache.spark.sql.errors.QueryExecutionErrors
 import org.apache.spark.sql.execution.datasources.FileFormat._
+import org.apache.spark.sql.execution.datasources.parquet.RowIndexGenerator
 import org.apache.spark.sql.execution.vectorized.ConstantColumnVector
 import org.apache.spark.sql.types.{LongType, StringType, StructType}
-import org.apache.spark.sql.vectorized.ColumnarBatch
+import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
 import org.apache.spark.unsafe.types.UTF8String
 import org.apache.spark.util.NextIterator
 
@@ -145,7 +146,7 @@ class FileScanRDD(
       /**
        * Create an array of constant column vectors containing all required metadata columns
        */
-      private def createMetadataColumnVector(c: ColumnarBatch): Array[ConstantColumnVector] = {
+      private def createMetadataColumnVector(c: ColumnarBatch): Array[ColumnVector] = {
         val path = new Path(currentFile.filePath)
         metadataColumns.map(_.name).map {
           case FILE_PATH =>
@@ -166,6 +167,16 @@ class FileScanRDD(
             // while internally, the TimestampType is stored in microsecond
             columnVector.setLong(currentFile.modificationTime * 1000L)
             columnVector
+          case ROW_INDEX =>
+            // TODO
+            val rowIdxCol = RowIndexGenerator.findColumnIndexInSchema(readDataSchema)
+            if (rowIdxCol >= 0) {
+              c.column(rowIdxCol)
+            } else {
+              val columnVector = new ConstantColumnVector(c.numRows(), LongType)
+              columnVector.setNull()
+              columnVector
+            }
         }.toArray
       }
 

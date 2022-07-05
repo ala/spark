@@ -182,6 +182,8 @@ object FileFormat {
 
   val FILE_MODIFICATION_TIME = "file_modification_time"
 
+  val ROW_INDEX = "row_index"
+
   val METADATA_NAME = "_metadata"
 
   // supported metadata struct fields for hadoop fs relation
@@ -190,6 +192,7 @@ object FileFormat {
     .add(StructField(FILE_NAME, StringType))
     .add(StructField(FILE_SIZE, LongType))
     .add(StructField(FILE_MODIFICATION_TIME, TimestampType))
+    .add(StructField(ROW_INDEX, LongType))
 
   // create a file metadata struct col
   def createFileMetadataCol: AttributeReference =
@@ -220,9 +223,17 @@ object FileFormat {
           // the modificationTime from the file is in millisecond,
           // while internally, the TimestampType `file_modification_time` is stored in microsecond
           row.update(i, fileModificationTime * 1000L)
+        case ROW_INDEX =>
+          // TODO
+          row.update(i, 42)
       }
     }
     row
+  }
+
+  def isConstantMetadataAttr(name: String): Boolean = name match {
+    case FILE_PATH | FILE_NAME | FILE_SIZE | FILE_MODIFICATION_TIME => true
+    case ROW_INDEX => false
   }
 }
 
