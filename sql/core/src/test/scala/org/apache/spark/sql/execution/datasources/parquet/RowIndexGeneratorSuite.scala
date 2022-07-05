@@ -21,7 +21,7 @@ import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.types.LongType
 
 class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
-//  import testImplicits._
+  import testImplicits._
 
   private val METADATA_FILE_PATH = "_metadata.file_path"
 
@@ -33,7 +33,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
 
   private val METADATA_ROW_INDEX = "_metadata.row_index"
 
-  test("_metadata") {
+  test("piggy back in columnar") {
     withTempPath { path =>
       val df = spark.range(0, 10, 1, 1).toDF("id")
       val schemaWithRowIdx = df.schema.add(RowIndexGenerator.ROW_INDEX_COLUMN_NAME,
@@ -47,9 +47,28 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
         .format("parquet")
         .schema(schemaWithRowIdx)
         .load(path.getAbsolutePath)
+        .select("*", METADATA_FILE_PATH, METADATA_ROW_INDEX)
 
-      dfRead.select("*", METADATA_FILE_PATH, METADATA_ROW_INDEX)
-        .show(200)
+      assert(dfRead.where($"id != $METADATA_ROW_INDEX").count() == 0)
+      dfRead.show(200)
+    }
+  }
+
+  test("no piggy means null") {
+    withTempPath { path =>
+      val df = spark.range(0, 10, 1, 1).toDF("id")
+
+      df.write
+        .format("parquet")
+        .save(path.getAbsolutePath)
+
+      val dfRead = spark.read
+        .format("parquet")
+        .load(path.getAbsolutePath)
+        .select("*", METADATA_FILE_PATH, METADATA_ROW_INDEX)
+
+      assert(dfRead.where($"$METADATA_ROW_INDEX IS NOT NULL").count() == 0)
+      dfRead.show(200)
     }
   }
 }
