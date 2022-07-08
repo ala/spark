@@ -21,7 +21,7 @@ import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.types.LongType
 
 class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
-  import testImplicits._
+//  import testImplicits._
 
   private val METADATA_FILE_PATH = "_metadata.file_path"
 
@@ -49,7 +49,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
         .load(path.getAbsolutePath)
         .select("*", METADATA_FILE_PATH, METADATA_ROW_INDEX)
 
-      assert(dfRead.where($"id != $METADATA_ROW_INDEX").count() == 0)
+      assert(dfRead.where("id != row_index").count() == 0)
       dfRead.show(200)
     }
   }
@@ -67,7 +67,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
         .load(path.getAbsolutePath)
         .select("*", METADATA_FILE_PATH, METADATA_ROW_INDEX)
 
-      assert(dfRead.where($"$METADATA_ROW_INDEX IS NOT NULL").count() == 0)
+      assert(dfRead.where("row_index IS NOT NULL").count() == 0)
       dfRead.show(200)
     }
   }

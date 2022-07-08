@@ -214,7 +214,7 @@ trait FileSourceScanLike extends DataSourceScanExec {
         vectorTypes ++
           // for column-based file format, append metadata column's vector type classes if any
           metadataColumns.map { metadataCol =>
-            if (FileFormat.isConstantMetadataAttr(metadataCol.name)) {
+            if (FileFormat.isConstantMetadataAttr(requiredSchema, metadataCol.name)) {
               classOf[ConstantColumnVector].getName
             } else {
               classOf[OnHeapColumnVector].getName

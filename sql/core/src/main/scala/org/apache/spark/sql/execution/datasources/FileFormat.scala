@@ -27,6 +27,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateUnsafeProjection
 import org.apache.spark.sql.errors.QueryExecutionErrors
+import org.apache.spark.sql.execution.datasources.parquet.RowIndexGenerator
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.Filter
 import org.apache.spark.sql.types.{DataType, LongType, StringType, StructField, StructType, TimestampType}
@@ -231,9 +232,12 @@ object FileFormat {
     row
   }
 
-  def isConstantMetadataAttr(name: String): Boolean = name match {
+  def isConstantMetadataAttr(schema: StructType, name: String): Boolean = name match {
     case FILE_PATH | FILE_NAME | FILE_SIZE | FILE_MODIFICATION_TIME => true
-    case ROW_INDEX => false
+    case ROW_INDEX =>
+      // Row index metadata column will be set to null if the underlying file format reader does
+      // not support row index generation.
+      !schema.fieldNames.contains(RowIndexGenerator.ROW_INDEX_COLUMN_NAME)
   }
 }
 

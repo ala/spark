@@ -170,9 +170,13 @@ class FileScanRDD(
           case ROW_INDEX =>
             // TODO
             val rowIdxCol = RowIndexGenerator.findColumnIndexInSchema(readDataSchema)
+            println(s"schema: $readDataSchema")
+            println(s"rowIdxCol $rowIdxCol")
             if (rowIdxCol >= 0) {
+              println("copying over")
               c.column(rowIdxCol)
             } else {
+              println(s"not copying over")
               val columnVector = new ConstantColumnVector(c.numRows(), LongType)
               columnVector.setNull()
               columnVector
