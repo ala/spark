@@ -144,6 +144,18 @@ private[sql] object QueryCompilationErrors extends QueryErrorsBase {
         s"side of the join. The $side-side columns: [${plan.output.map(_.name).mkString(", ")}]")
   }
 
+  def unresolvedAttributeError(
+      errorClass: String,
+      colName: String,
+      candidates: Seq[String],
+      origin: Origin): Throwable = {
+    val candidateIds = candidates.map(candidate => toSQLId(candidate))
+    new AnalysisException(
+      errorClass = errorClass,
+      messageParameters = Array(toSQLId(colName), candidateIds.mkString(", ")),
+      origin = origin)
+  }
+
   def dataTypeMismatchForDeserializerError(
       dataType: DataType, desiredType: String): Throwable = {
     new AnalysisException(
@@ -2463,5 +2475,10 @@ private[sql] object QueryCompilationErrors extends QueryErrorsBase {
     new AnalysisException(
       s"Failed to execute command because DEFAULT values are not supported for target data " +
         "source with table provider: \"" + dataSource + "\"")
+  }
+
+  def defaultValuesMayNotContainSubQueryExpressions(): Throwable = {
+    new AnalysisException(
+      "Failed to execute command because subquery expressions are not allowed in DEFAULT values")
   }
 }

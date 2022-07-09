@@ -2673,8 +2673,8 @@ class DataFrameSuite extends QueryTest
     val err = intercept[AnalysisException] {
       df.groupBy($"d", $"b").as[GroupByKey, Row]
     }
-    assert(err.getErrorClass == "MISSING_COLUMN")
-    assert(err.messageParameters.head == "d")
+    assert(err.getErrorClass == "UNRESOLVED_COLUMN")
+    assert(err.messageParameters.head == "`d`")
   }
 
   test("emptyDataFrame should be foldable") {
@@ -3238,6 +3238,11 @@ class DataFrameSuite extends QueryTest
         sql(s"select d from ($t4) t4")
       }
     }
+  }
+
+  test("SPARK-39612: exceptAll with following count should work") {
+    val d1 = Seq("a").toDF
+    assert(d1.exceptAll(d1).count() === 0)
   }
 }
 
