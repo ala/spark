@@ -77,15 +77,15 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       val df = spark.range(0, 10, 1, 1).toDF("id")
 
       df.write
-        .format("parquet")
+        .format("csv")
         .save(path.getAbsolutePath)
 
       val dfRead = spark.read
-        .format("parquet")
+        .format("csv")
         .load(path.getAbsolutePath)
         .select("*", METADATA_ROW_INDEX)
 
-      assert(dfRead.where("id != row_index").count() == 0)
+      assert(dfRead.where("id IS NOT NULL").count() == 0)
       dfRead.show(200)
     }
   }

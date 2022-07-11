@@ -211,7 +211,6 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
         case FileSourceMetadataAttribute(attr) => attr
       }
 
-      // WrappedArray(row_index#29L)
       val metadataColumns = metadataStructOpt.map { metadataStruct =>
         metadataStruct.dataType.asInstanceOf[StructType].fields.map { field =>
           FileSourceMetadataAttribute(field.name, field.dataType)
@@ -225,42 +224,15 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           case _ => None
         }
 
-      println(s"Added: $fileFormatReaderGeneratedMetadataColumns")
-
       val readDataColumns = dataColumns
           .filter(requiredAttributes.contains)
           .filterNot(partitionColumns.contains) ++ fileFormatReaderGeneratedMetadataColumns
-      /*
-      case class AttributeReference(
-    name: String,
-    dataType: DataType,
-    nullable: Boolean = true,
-       */
+
       val outputSchema = readDataColumns.toStructType
       logInfo(s"Output Data Schema: ${outputSchema.simpleString(5)}")
 
-
-
-      println(s"metadataColumns $metadataColumns")
-
-      // List(id#5L, row_index#29L)
       // outputAttributes should also include the metadata columns at the very end
       val outputAttributes = readDataColumns ++ partitionColumns ++ metadataColumns
-
-      println(s"outputAttributes $outputAttributes")
-
-      /*
-      case class FileSourceScanExec(
-    @transient override val relation: HadoopFsRelation,
-    override val output: Seq[Attribute],
-    override val requiredSchema: StructType,
-    override val partitionFilters: Seq[Expression],
-    override val optionalBucketSet: Option[BitSet],
-    override val optionalNumCoalescedBuckets: Option[Int],
-    override val dataFilters: Seq[Expression],
-    override val tableIdentifier: Option[TableIdentifier],
-    override val disableBucketedScan: Boolean = false)
-       */
 
       val scan =
         FileSourceScanExec(
@@ -273,9 +245,6 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           dataFilters,
           table.map(_.identifier))
 
-      println(s"scan $scan")
-
-      // TODO(Ala): Drop the row index column here?
       // extra Project node: wrap flat metadata columns to a metadata struct
       val withMetadataProjections = metadataStructOpt.map { metadataStruct =>
         val metadataAlias =
@@ -283,8 +252,6 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
         execution.ProjectExec(
           scan.output.dropRight(metadataColumns.length) :+ metadataAlias, scan)
       }.getOrElse(scan)
-
-      println(s"withMetadataProjections $withMetadataProjections")
 
       val afterScanFilter = afterScanFilters.toSeq.reduceOption(expressions.And)
       val withFilter = afterScanFilter
@@ -295,8 +262,6 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
       } else {
         execution.ProjectExec(projects, withFilter)
       }
-
-      println(s"withProjections $withProjections")
 
       withProjections :: Nil
 
