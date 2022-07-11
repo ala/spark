@@ -171,6 +171,12 @@ trait FileFormat {
    * By default all field name is supported.
    */
   def supportFieldName(name: String): Boolean = true
+
+  /**
+   * Returns whether this format is capable of populating column ROW_INDEX_TEMPORARY_COLUMN_NAME
+   * with row indexes.
+   */
+  def supportRowIndexes(): Boolean = false
 }
 
 object FileFormat {
@@ -184,6 +190,8 @@ object FileFormat {
   val FILE_MODIFICATION_TIME = "file_modification_time"
 
   val ROW_INDEX = "row_index"
+
+  val ROW_INDEX_TEMPORARY_COLUMN_NAME = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
 
   val METADATA_NAME = "_metadata"
 

@@ -408,6 +408,8 @@ class ParquetFileFormat
 
     case _ => false
   }
+
+  override def supportRowIndexes(): Boolean = true
 }
 
 object ParquetFileFormat extends Logging {

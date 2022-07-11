@@ -82,6 +82,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
 
       val dfRead = spark.read
         .format("csv")
+        .schema(df.schema)
         .load(path.getAbsolutePath)
         .select("*", METADATA_ROW_INDEX)
 

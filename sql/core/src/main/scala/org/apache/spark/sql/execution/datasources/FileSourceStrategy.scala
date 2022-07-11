@@ -219,7 +219,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
 
       val fileFormatReaderGeneratedMetadataColumns: Seq[Attribute] =
         metadataColumns.map(_.name).flatMap {
-          case FileFormat.ROW_INDEX =>
+          case FileFormat.ROW_INDEX if fsRelation.fileFormat.supportRowIndexes() =>
             Some(AttributeReference(RowIndexGenerator.ROW_INDEX_COLUMN_NAME, LongType)())
           case _ => None
         }
