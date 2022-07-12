@@ -225,18 +225,12 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           case _ => None
         }
 
-      println(s"fileFormatReaderGeneratedMetadataColumns $fileFormatReaderGeneratedMetadataColumns")
-      println(s"fileFormat ${fsRelation.fileFormat.toString}")
-      println(s"supports row indexes? ${fsRelation.fileFormat.supportRowIndexes()}")
-
       val readDataColumns = dataColumns
           .filter(requiredAttributes.contains)
           .filterNot(partitionColumns.contains) ++ fileFormatReaderGeneratedMetadataColumns
 
       val outputSchema = readDataColumns.toStructType
       logInfo(s"Output Data Schema: ${outputSchema.simpleString(5)}")
-
-      println(s"outputSchema $outputSchema")
 
       // outputAttributes should also include the metadata columns at the very end
       val outputAttributes = readDataColumns ++ partitionColumns ++ metadataColumns

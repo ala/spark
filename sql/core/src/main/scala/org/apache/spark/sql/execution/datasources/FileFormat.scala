@@ -177,6 +177,21 @@ trait FileFormat {
    * with row indexes.
    */
   def supportRowIndexes(): Boolean = false
+
+  /**
+   * Create a file metadata struct column containing fields supported by the given file format.
+   */
+  def createFileMetadataCol(): AttributeReference = {
+    var schema: StructType = new StructType()
+      .add(StructField(FileFormat.FILE_PATH, StringType))
+      .add(StructField(FileFormat.FILE_NAME, StringType))
+      .add(StructField(FileFormat.FILE_SIZE, LongType))
+      .add(StructField(FileFormat.FILE_MODIFICATION_TIME, TimestampType))
+    if (supportRowIndexes()) {
+      schema = schema.add(StructField(FileFormat.ROW_INDEX, LongType))
+    }
+    FileSourceMetadataAttribute(FileFormat.METADATA_NAME, schema)
+  }
 }
 
 object FileFormat {
@@ -191,27 +206,11 @@ object FileFormat {
 
   val ROW_INDEX = "row_index"
 
-  val ROW_INDEX_TEMPORARY_COLUMN_NAME = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
+  // A name for a temporary column that holds row indexes computed by the file format reader
+  // until they can be placed in the _metadata struct.
+  val ROW_INDEX_TEMPORARY_COLUMN_NAME = s"_tmp_metadata_$ROW_INDEX"
 
   val METADATA_NAME = "_metadata"
-
-  // supported metadata struct fields for hadoop fs relation
-  def createMetadataStruct(fileFormat: FileFormat): StructType = {
-    val struct = new StructType()
-      .add(StructField(FILE_PATH, StringType))
-      .add(StructField(FILE_NAME, StringType))
-      .add(StructField(FILE_SIZE, LongType))
-      .add(StructField(FILE_MODIFICATION_TIME, TimestampType))
-    if (fileFormat.supportRowIndexes()) {
-      struct.add(StructField(ROW_INDEX, LongType))
-    } else {
-      struct
-    }
-  }
-
-  // create a file metadata struct col
-  def createFileMetadataCol(fileFormat: FileFormat): AttributeReference =
-    FileSourceMetadataAttribute(METADATA_NAME, createMetadataStruct(fileFormat))
 
   // create an internal row given required metadata fields and file information
   def createMetadataInternalRow(

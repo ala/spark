@@ -25,6 +25,7 @@ import org.apache.parquet.column.page.PageReadStore
 import org.apache.parquet.hadoop.ParquetRecordReader
 
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.execution.datasources.FileFormat
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector
 import org.apache.spark.sql.types.{LongType, StructField, StructType}
 
@@ -63,7 +64,7 @@ class RowIndexGenerator(rowIndexColumnIdx: Int) {
 }
 
 object RowIndexGenerator {
-  val ROW_INDEX_COLUMN_NAME = "_metadata_row_index_tmp_column"
+  val ROW_INDEX_COLUMN_NAME = FileFormat.ROW_INDEX_TEMPORARY_COLUMN_NAME
 
   /**
    * A wrapper for `ParquetRecordReader` that sets row index column to the correct value in

@@ -92,6 +92,16 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     }}
   }
 
+  test("supported file format - read _metadata struct") {
+    withReadDataFrame("parquet") { df =>
+      val withMetadataStruct = df.select("*", FileFormat.METADATA_NAME)
+
+      // `_metadata.row_index` column is present when selecting `_metadata` as a whole.
+      val metadataCols = collectMetadataCols(withMetadataStruct.schema)
+      assert(metadataCols.contains(FileFormat.ROW_INDEX))
+    }
+  }
+
   test("unsupported file format - read _metadata struct") {
     withReadDataFrame("orc") { df =>
       val withMetadataStruct = df.select("*", FileFormat.METADATA_NAME)
