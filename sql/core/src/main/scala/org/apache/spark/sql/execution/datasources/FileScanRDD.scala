@@ -34,7 +34,7 @@ import org.apache.spark.sql.errors.QueryExecutionErrors
 import org.apache.spark.sql.execution.datasources.FileFormat._
 import org.apache.spark.sql.execution.datasources.parquet.RowIndexGenerator
 import org.apache.spark.sql.execution.vectorized.ConstantColumnVector
-import org.apache.spark.sql.types.{LongType, StringType, StructType}
+import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType}
 import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
 import org.apache.spark.unsafe.types.UTF8String
 import org.apache.spark.util.NextIterator
@@ -128,23 +128,30 @@ class FileScanRDD(
 
       // an unsafe projection to convert a joined internal row to an unsafe row
       private lazy val projection = {
-        println(s"readDataSchema = $readDataSchema")
-        println(s"metadataColumns = $metadataColumns")
         val joinedExpressions =
           readDataSchema.fields.map(_.dataType) ++ metadataColumns.map(_.dataType)
-        println(s"joinedExpressions = $joinedExpressions")
         UnsafeProjection.create(joinedExpressions)
       }
 
+      class MetadataPerRowUpdater
+          (readSchema: StructField, metadataColumns: Seq[AttributeReference]) {
+
+        def updateRow(row: InternalRow, metadataRow: InternalRow) { }
+      }
+
       /**
+       * TODO(Different column):
        * For each partitioned file, metadata columns for each record in the file are exactly same.
        * Only update metadata row when `currentFile` is changed.
        */
-      private def updateMetadataRow(): Unit =
+      private def updatePerFileMetadata(): Unit =
         if (metadataColumns.nonEmpty && currentFile != null) {
           updateMetadataInternalRow(metadataRow, metadataColumns.map(_.name),
             new Path(currentFile.filePath), currentFile.fileSize, currentFile.modificationTime)
         }
+
+      private val rowIndexUpdater =
+        RowIndexGenerator.getMetadataRowUpdater(readDataSchema, metadataColumns)
 
       /**
        * Create an array of constant column vectors containing all required metadata columns
@@ -187,10 +194,12 @@ class FileScanRDD(
             case c: ColumnarBatch => new ColumnarBatch(
               Array.tabulate(c.numCols())(c.column) ++ createMetadataColumnVector(c),
               c.numRows())
-              // Erroring out of projection.apply...?
-              // If I cann fix metdataRow, I can fix this.
-            case u: UnsafeRow => projection.apply(new JoinedRow(u, metadataRow))
-            case i: InternalRow => new JoinedRow(i, metadataRow)
+            case u: UnsafeRow =>
+              rowIndexUpdater.foreach(_.update(u, metadataRow))
+              projection.apply(new JoinedRow(u, metadataRow))
+            case i: InternalRow =>
+              rowIndexUpdater.foreach(_.update(i, metadataRow))
+              new JoinedRow(i, metadataRow)
           }
         } else {
           nextElement
@@ -229,7 +238,7 @@ class FileScanRDD(
       private def nextIterator(): Boolean = {
         if (files.hasNext) {
           currentFile = files.next()
-          updateMetadataRow()
+          updatePerFileMetadata()
           logInfo(s"Reading File $currentFile")
           // Sets InputFileBlockHolder for the file block's information
           InputFileBlockHolder.set(currentFile.filePath, currentFile.start, currentFile.length)
@@ -297,7 +306,7 @@ class FileScanRDD(
           }
         } else {
           currentFile = null
-          updateMetadataRow()
+          updatePerFileMetadata()
           InputFileBlockHolder.unset()
           false
         }

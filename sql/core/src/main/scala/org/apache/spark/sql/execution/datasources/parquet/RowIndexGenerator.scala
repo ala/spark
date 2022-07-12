@@ -25,6 +25,7 @@ import org.apache.parquet.column.page.PageReadStore
 import org.apache.parquet.hadoop.ParquetRecordReader
 
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.expressions.AttributeReference
 import org.apache.spark.sql.execution.datasources.FileFormat
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector
 import org.apache.spark.sql.types.{LongType, StructField, StructType}
@@ -132,5 +133,22 @@ object RowIndexGenerator {
     val columnIdx = findColumnIndexInSchema(sparkSchema)
     if (columnIdx >= 0) new RowIndexGenerator(columnIdx)
     else null
+  }
+
+  class MetadataRowUpdater(readRowColIdx: Int, metadataRowColIdx: Int) {
+    def update(readRow: InternalRow, metadataRow: InternalRow): Unit = {
+      metadataRow.update(metadataRowColIdx, readRow.getLong(readRowColIdx))
+    }
+  }
+
+  def getMetadataRowUpdater(
+      readRowSchema: StructType,
+      metadataColumns: Seq[AttributeReference]): Option[MetadataRowUpdater] = {
+    metadataColumns.zipWithIndex.find(_._1.name == FileFormat.ROW_INDEX)
+      .map { case (_, metadataRowColIdx) =>
+        val readRowColIdx = findColumnIndexInSchema(readRowSchema)
+        assert(readRowColIdx >= 0)
+        new MetadataRowUpdater(readRowColIdx, metadataRowColIdx)
+      }
   }
 }

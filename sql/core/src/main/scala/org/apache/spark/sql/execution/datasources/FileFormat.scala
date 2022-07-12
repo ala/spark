@@ -238,8 +238,8 @@ object FileFormat {
           // while internally, the TimestampType `file_modification_time` is stored in microsecond
           row.update(i, fileModificationTime * 1000L)
         case ROW_INDEX =>
-          // TODO
-          row.update(i, 42L)
+          // TODO(Ala): Comment why
+          row.update(i, -1L)
       }
     }
     row
