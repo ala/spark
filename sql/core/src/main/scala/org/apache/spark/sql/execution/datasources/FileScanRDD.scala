@@ -128,8 +128,11 @@ class FileScanRDD(
 
       // an unsafe projection to convert a joined internal row to an unsafe row
       private lazy val projection = {
+        println(s"readDataSchema = $readDataSchema")
+        println(s"metadataColumns = $metadataColumns")
         val joinedExpressions =
           readDataSchema.fields.map(_.dataType) ++ metadataColumns.map(_.dataType)
+        println(s"joinedExpressions = $joinedExpressions")
         UnsafeProjection.create(joinedExpressions)
       }
 
@@ -168,19 +171,9 @@ class FileScanRDD(
             columnVector.setLong(currentFile.modificationTime * 1000L)
             columnVector
           case ROW_INDEX =>
-            // TODO
             val rowIdxCol = RowIndexGenerator.findColumnIndexInSchema(readDataSchema)
-            println(s"schema: $readDataSchema")
-            println(s"rowIdxCol $rowIdxCol")
-            if (rowIdxCol >= 0) {
-              println("copying over")
-              c.column(rowIdxCol)
-            } else {
-              println(s"not copying over")
-              val columnVector = new ConstantColumnVector(c.numRows(), LongType)
-              columnVector.setNull()
-              columnVector
-            }
+            assert(rowIdxCol >= 0)
+            c.column(rowIdxCol)
         }.toArray
       }
 
@@ -194,6 +187,8 @@ class FileScanRDD(
             case c: ColumnarBatch => new ColumnarBatch(
               Array.tabulate(c.numCols())(c.column) ++ createMetadataColumnVector(c),
               c.numRows())
+              // Erroring out of projection.apply...?
+              // If I cann fix metdataRow, I can fix this.
             case u: UnsafeRow => projection.apply(new JoinedRow(u, metadataRow))
             case i: InternalRow => new JoinedRow(i, metadataRow)
           }

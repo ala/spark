@@ -239,7 +239,7 @@ object FileFormat {
           row.update(i, fileModificationTime * 1000L)
         case ROW_INDEX =>
           // TODO
-          row.update(i, 42)
+          row.update(i, 42L)
       }
     }
     row
