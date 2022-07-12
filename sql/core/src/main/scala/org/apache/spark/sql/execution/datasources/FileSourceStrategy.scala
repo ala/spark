@@ -219,10 +219,15 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
 
       val fileFormatReaderGeneratedMetadataColumns: Seq[Attribute] =
         metadataColumns.map(_.name).flatMap {
-          case FileFormat.ROW_INDEX if fsRelation.fileFormat.supportRowIndexes() =>
+          case FileFormat.ROW_INDEX =>
+            assert(fsRelation.fileFormat.supportRowIndexes())
             Some(AttributeReference(RowIndexGenerator.ROW_INDEX_COLUMN_NAME, LongType)())
           case _ => None
         }
+
+      println(s"fileFormatReaderGeneratedMetadataColumns $fileFormatReaderGeneratedMetadataColumns")
+      println(s"fileFormat ${fsRelation.fileFormat.toString}")
+      println(s"supports row indexes? ${fsRelation.fileFormat.supportRowIndexes()}")
 
       val readDataColumns = dataColumns
           .filter(requiredAttributes.contains)
@@ -230,6 +235,8 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
 
       val outputSchema = readDataColumns.toStructType
       logInfo(s"Output Data Schema: ${outputSchema.simpleString(5)}")
+
+      println(s"outputSchema $outputSchema")
 
       // outputAttributes should also include the metadata columns at the very end
       val outputAttributes = readDataColumns ++ partitionColumns ++ metadataColumns

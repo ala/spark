@@ -196,16 +196,22 @@ object FileFormat {
   val METADATA_NAME = "_metadata"
 
   // supported metadata struct fields for hadoop fs relation
-  val METADATA_STRUCT: StructType = new StructType()
-    .add(StructField(FILE_PATH, StringType))
-    .add(StructField(FILE_NAME, StringType))
-    .add(StructField(FILE_SIZE, LongType))
-    .add(StructField(FILE_MODIFICATION_TIME, TimestampType))
-    .add(StructField(ROW_INDEX, LongType))
+  def createMetadataStruct(fileFormat: FileFormat): StructType = {
+    val struct = new StructType()
+      .add(StructField(FILE_PATH, StringType))
+      .add(StructField(FILE_NAME, StringType))
+      .add(StructField(FILE_SIZE, LongType))
+      .add(StructField(FILE_MODIFICATION_TIME, TimestampType))
+    if (fileFormat.supportRowIndexes()) {
+      struct.add(StructField(ROW_INDEX, LongType))
+    } else {
+      struct
+    }
+  }
 
   // create a file metadata struct col
-  def createFileMetadataCol: AttributeReference =
-    FileSourceMetadataAttribute(METADATA_NAME, METADATA_STRUCT)
+  def createFileMetadataCol(fileFormat: FileFormat): AttributeReference =
+    FileSourceMetadataAttribute(METADATA_NAME, createMetadataStruct(fileFormat))
 
   // create an internal row given required metadata fields and file information
   def createMetadataInternalRow(

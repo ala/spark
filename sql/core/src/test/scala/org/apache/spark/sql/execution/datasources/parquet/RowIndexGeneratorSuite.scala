@@ -16,9 +16,10 @@
  */
 package org.apache.spark.sql.execution.datasources.parquet
 
-import org.apache.spark.sql.QueryTest
+import org.apache.spark.sql.{AnalysisException, DataFrame, QueryTest}
+import org.apache.spark.sql.execution.datasources.FileFormat
 import org.apache.spark.sql.test.SharedSparkSession
-import org.apache.spark.sql.types.LongType
+import org.apache.spark.sql.types.{LongType, StructType}
 
 class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
 //  import testImplicits._
@@ -72,7 +73,74 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     }
   }
 
-  test("no support == nulls") {
+  val unsupportedFileFormats = Seq("orc", "csv", "json")
+  val supportedFileFormats = Seq("parquet") // Add: V2
+
+  test("orc _metadata") {
+    withTempPath { path =>
+      val df = spark.range(0, 10, 1, 1).toDF("id")
+
+      df.write
+        .format("orc")
+        .save(path.getAbsolutePath)
+
+      val dfRead = spark.read
+        .format("orc")
+        .schema(df.schema)
+        .load(path.getAbsolutePath)
+        .select("*", "_metadata")
+
+      dfRead.show()
+
+      // intercept[AnalysisException](dfRead.collect())
+      //      dfRead.where("row_index IS NULL").show(200)
+      //      println(dfRead.where("row_index IS NULL").queryExecution.executedPlan)
+      //      dfRead.where("row_index IS NOT NULL").show(200)
+      //      println(dfRead.where("row_index IS NOT NULL").queryExecution.executedPlan)
+      //      assert(dfRead.where("row_index IS NULL").count() == 10)
+      //      assert(dfRead.where("row_index IS NOT NULL").count() == 0)
+    }
+  }
+
+  def withReadDataFrame(format: String)(f: DataFrame => Unit): Unit = {
+    withTempPath { path =>
+      val writeDf = spark.range(0, 10, 1, 1).toDF("id")
+      writeDf.write.format(format).save(path.getAbsolutePath)
+      val readDf = spark.read.format(format).schema(writeDf.schema).load(path.getAbsolutePath)
+      f(readDf)
+    }
+  }
+
+  val allMetadataCols = Seq(
+    FileFormat.FILE_PATH,
+    FileFormat.FILE_SIZE,
+    FileFormat.FILE_MODIFICATION_TIME,
+    FileFormat.ROW_INDEX
+  )
+
+  def getMetadataCols(struct: StructType): Seq[String] = {
+    struct.fields.flatMap { field => field.dataType match {
+      case s: StructType => getMetadataCols(s)
+      case _ if allMetadataCols.contains(field.name) => Some(field.name)
+      case _ => None
+    }}
+  }
+
+  test("unsupported file format - read _metadata struct") {
+    withReadDataFrame("orc") { df =>
+      val withMetadataStruct = df.select("*", FileFormat.METADATA_NAME)
+
+      // Metadata struct can be read without an error.
+      withMetadataStruct.collect()
+
+      // Schema does not contain row index column, but contains all the remaining metadata columns.
+      val metadataCols = getMetadataCols(withMetadataStruct.schema)
+      assert(!metadataCols.contains(FileFormat.ROW_INDEX))
+      assert(allMetadataCols.intersect(metadataCols).size == allMetadataCols.size - 1)
+    }
+  }
+
+  test("csv") {
     withTempPath { path =>
       val df = spark.range(0, 10, 1, 1).toDF("id")
 
@@ -86,8 +154,11 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
         .load(path.getAbsolutePath)
         .select("*", METADATA_ROW_INDEX)
 
-      assert(dfRead.where("id IS NOT NULL").count() == 0)
-      dfRead.show(200)
+      intercept[AnalysisException](dfRead.collect())
+//
+//      dfRead.show(200)
+//      assert(dfRead.where("row_index IS NULL").count() == 10)
+//      assert(dfRead.where("row_index IS NOT NULL").count() == 0)
     }
   }
 }
