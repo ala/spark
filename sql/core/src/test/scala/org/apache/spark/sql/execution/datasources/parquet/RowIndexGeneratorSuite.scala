@@ -30,16 +30,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
 
   // TODO(Ala): `_metadata` struct does not exist in DSv2.
 
-  Seq((true, "vectorized"), (false, "row reader")).foreach { case (useVectorizedReader, label) =>
-    test(s"parquet ($label) - read _metadata.row_index") {
-      withSQLConf(SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString) {
-        withReadDataFrame("parquet") { df =>
-          val res = df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}")
-          assert(res.where(s"id != ${FileFormat.ROW_INDEX}").count == 0)
-        }
-      }
-    }
-  }
+
 
   def withReadDataFrame(format: String)(f: DataFrame => Unit): Unit = {
     withTempPath { path =>
@@ -64,6 +55,17 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       case _ if allMetadataCols.contains(field.name) => Some(field.name)
       case _ => None
     }}
+  }
+
+  Seq((true, "vectorized"), (false, "row reader")).foreach { case (useVectorizedReader, label) =>
+    test(s"parquet ($label) - read _metadata.row_index") {
+      withSQLConf(SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString) {
+        withReadDataFrame("parquet") { df =>
+          val res = df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}")
+          assert(res.where(s"id != ${FileFormat.ROW_INDEX}").count == 0)
+        }
+      }
+    }
   }
 
   test("supported file format - read _metadata struct") {
@@ -97,5 +99,4 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       }
       assert(ex.getMessage.contains("No such struct field row_index"))
     }
-  }
 }
