@@ -14,29 +14,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.sql.execution.datasources.parquet
+package org.apache.spark.sql.execution.datasources
 
 import org.apache.spark.sql.{AnalysisException, DataFrame, QueryTest}
-import org.apache.spark.sql.execution.datasources.FileFormat
+import org.apache.spark.sql.functions.lit
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.types.StructType
 
-class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
-
+class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession {
   // TODO:
-  // - check streaming
   // - check with multiple cols, and partition-by stuffs
+  // - avoid splitting
 
-  // TODO(Ala): `_metadata` struct does not exist in DSv2.
+  import testImplicits._
 
+  val expected_row_id_col = "expected_row_id"
 
-
-  def withReadDataFrame(format: String)(f: DataFrame => Unit): Unit = {
+  def withReadDataFrame
+      (format: String, partitioned: Boolean = false)
+      (f: DataFrame => Unit): Unit = {
     withTempPath { path =>
-      val writeDf = spark.range(0, 10, 1, 1).toDF("id")
-      writeDf.write.format(format).save(path.getAbsolutePath)
-      val readDf = spark.read.format(format).schema(writeDf.schema).load(path.getAbsolutePath)
+      val schema = if (partitioned) {
+        val df = spark.range(0, 100, 1, 1).toDF("id")
+          .select(
+            ($"id" % 10) as expected_row_id_col,
+            lit("a text").as("text"),
+            ($"id" / 10).cast("int").as("pb"))
+        df.write.format(format).partitionBy("pb").save(path.getAbsolutePath)
+        df.schema
+      } else {
+        val df = spark.range(0, 10, 1, 1).toDF(expected_row_id_col)
+        df.write.format(format).save(path.getAbsolutePath)
+        df.schema
+      }
+      val readDf = spark.read.format(format).schema(schema).load(path.getAbsolutePath)
       f(readDf)
     }
   }
@@ -57,12 +69,19 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
     }}
   }
 
-  Seq((true, "vectorized"), (false, "row reader")).foreach { case (useVectorizedReader, label) =>
+  /*
+  [info] - parquet (parquet-mr, partitioned) - read _metadata.row_index *** FAILED *** (521 milliseconds)
+   */
+  for (useVectorizedReader <- Seq(true, false))
+  for (partitioned <- Seq(true, false)) {
+    val label = { if (useVectorizedReader) "vectorized" else "parquet-mr"} +
+      { if (partitioned) ", partitioned" else "" }
     test(s"parquet ($label) - read _metadata.row_index") {
       withSQLConf(SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString) {
-        withReadDataFrame("parquet") { df =>
+        withReadDataFrame("parquet", partitioned) { df =>
           val res = df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}")
-          assert(res.where(s"id != ${FileFormat.ROW_INDEX}").count == 0)
+          res.show(300)
+          assert(res.where(s"$expected_row_id_col != ${FileFormat.ROW_INDEX}").count == 0)
         }
       }
     }
@@ -99,4 +118,7 @@ class RowIndexGeneratorSuite extends QueryTest with SharedSparkSession {
       }
       assert(ex.getMessage.contains("No such struct field row_index"))
     }
+  }
+
+//  test("")
 }
