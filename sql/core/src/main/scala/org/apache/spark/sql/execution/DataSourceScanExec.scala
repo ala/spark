@@ -34,7 +34,7 @@ import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource, RowIndexGenerator}
 import org.apache.spark.sql.execution.datasources.v2.PushedDownOperators
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
-import org.apache.spark.sql.execution.vectorized.{ConstantColumnVector, OnHeapColumnVector}
+import org.apache.spark.sql.execution.vectorized.{ConstantColumnVector, OffHeapColumnVector, OnHeapColumnVector}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.{BaseRelation, Filter}
 import org.apache.spark.sql.types.StructType
@@ -217,8 +217,10 @@ trait FileSourceScanLike extends DataSourceScanExec {
         vectorTypes ++
           // for column-based file format, append metadata column's vector type classes if any
           metadataColumns.map { metadataCol =>
-            if (FileFormat.isConstantMetadataAttr(requiredSchema, metadataCol.name)) {
+            if (FileFormat.isConstantMetadataAttr(metadataCol.name)) {
               classOf[ConstantColumnVector].getName
+            } else if (relation.sparkSession.sessionState.conf.offHeapColumnVectorEnabled) {
+              classOf[OffHeapColumnVector].getName
             } else {
               classOf[OnHeapColumnVector].getName
             }
