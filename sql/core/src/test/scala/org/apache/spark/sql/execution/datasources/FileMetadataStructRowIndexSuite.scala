@@ -69,19 +69,20 @@ class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession 
     }}
   }
 
-  for (useVectorizedReader <- Seq(true, false))
+  for (useVectorizedReader <- Seq(false, true))
   for (useOffHeapMemory <- Seq(useVectorizedReader, false).distinct)
-  for (partitioned <- Seq(true, false)) {
-    val label = { if (useVectorizedReader) "vectorized" else "parquet-mr"} +
-      { if (useOffHeapMemory) ", offheap" else "" } +
-      { if (partitioned) ", partitioned" else "" }
+  for (partitioned <- Seq(false, true)) {
+    val label = Seq(
+        { if (useVectorizedReader) "vectorized" else "parquet-mr"},
+        { if (useOffHeapMemory) "off-heap" else "" },
+        { if (partitioned) "partitioned" else "" }
+      ).filter(_.nonEmpty).mkString(", ")
     test(s"parquet ($label) - read _metadata.row_index") {
       withSQLConf(
           SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString,
           SQLConf.COLUMN_VECTOR_OFFHEAP_ENABLED.key -> useOffHeapMemory.toString) {
         withReadDataFrame("parquet", partitioned) { df =>
           val res = df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}")
-          res.show(300)
           assert(res.where(s"$expected_row_id_col != ${FileFormat.ROW_INDEX}").count == 0)
         }
       }
