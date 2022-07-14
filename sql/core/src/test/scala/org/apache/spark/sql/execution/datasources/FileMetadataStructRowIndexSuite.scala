@@ -23,10 +23,6 @@ import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.types.StructType
 
 class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession {
-  // TODO:
-  // - check with multiple cols, and partition-by stuffs
-  // - avoid splitting
-
   import testImplicits._
 
   val expected_row_id_col = "expected_row_id"
@@ -121,6 +117,4 @@ class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession 
       assert(ex.getMessage.contains("No such struct field row_index"))
     }
   }
-
-//  test("")
 }
