@@ -180,7 +180,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
         None
       }
 
-      val dataColumns: Seq[Attribute] =
+      val dataColumns =
         l.resolve(fsRelation.dataSchema, fsRelation.sparkSession.sessionState.analyzer.resolver)
 
       // Partition keys are not available in the statistics of the files.
@@ -230,7 +230,6 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           .filterNot(partitionColumns.contains) ++ fileFormatReaderGeneratedMetadataColumns
 
       val outputSchema = readDataColumns.toStructType
-      logInfo(s"Output Data Schema: ${outputSchema.simpleString(5)}")
 
       // outputAttributes should also include the metadata columns at the very end
       val outputAttributes = readDataColumns ++ partitionColumns ++ metadataColumns
@@ -239,7 +238,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
         FileSourceScanExec(
           fsRelation,
           outputAttributes,
-          outputSchema, // requiredSchema
+          outputSchema,
           partitionKeyFilters.toSeq,
           bucketSet,
           None,
@@ -252,6 +251,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           Alias(CreateStruct(metadataColumns), METADATA_NAME)(exprId = metadataStruct.exprId)
         execution.ProjectExec(
           scan.output.dropRight(metadataColumns.length) :+ metadataAlias, scan)
+        // TODO(Ala): Filter out the temporary column, but only if we introduced it ourselves.
       }.getOrElse(scan)
 
       val afterScanFilter = afterScanFilters.toSeq.reduceOption(expressions.And)
