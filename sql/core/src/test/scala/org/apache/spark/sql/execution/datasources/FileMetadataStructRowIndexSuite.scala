@@ -29,24 +29,23 @@ class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession 
 
   def withReadDataFrame
       (format: String, partitioned: Boolean = false)
-      (f: (DataFrame, DataFrame) => Unit): Unit = {
+      (f: DataFrame => Unit): Unit = {
     withTempPath { path =>
-      val writeDf = if (partitioned) {
-        val df = spark.range(0, 100, 1, 1).toDF("id")
+      val schema = if (partitioned) {
+        val writeDf = spark.range(0, 100, 1, 1).toDF("id")
           .select(
             ($"id" % 10) as expected_row_idx_col,
             lit("a text").as("text"),
             ($"id" / 10).cast("int").cast("string").as("pb"))
-        df.write.format(format).partitionBy("pb").save(path.getAbsolutePath)
-        df
+        writeDf.write.format(format).partitionBy("pb").save(path.getAbsolutePath)
+        writeDf.schema
       } else {
-        val df = spark.range(0, 10, 1, 1).toDF(expected_row_idx_col)
-        df.write.format(format).save(path.getAbsolutePath)
-        df
+        val writeDf = spark.range(0, 10, 1, 1).toDF(expected_row_idx_col)
+        writeDf.write.format(format).save(path.getAbsolutePath)
+        writeDf.schema
       }
-      val schema = writeDf.schema
       val readDf = spark.read.format(format).schema(schema).load(path.getAbsolutePath)
-      f(writeDf, readDf)
+      f(readDf)
     }
   }
 
@@ -77,31 +76,18 @@ class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession 
     test(s"parquet ($label) - read _metadata.row_index") {
       withSQLConf(
           SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString,
-          SQLConf.COLUMN_VECTOR_OFFHEAP_ENABLED.key -> useOffHeapMemory.toString,
-          "spark.sql.codegen.wholeStage" -> "false") {
-        withReadDataFrame("parquet", partitioned) { case (writeDf: DataFrame, df: DataFrame) =>
-          println("--------------------- READ --------------------")
+          SQLConf.COLUMN_VECTOR_OFFHEAP_ENABLED.key -> useOffHeapMemory.toString) {
+        withReadDataFrame("parquet", partitioned) { df =>
           val res = df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}")
-//          println(res.where(s"$expected_row_id_col != ${FileFormat.ROW_INDEX}")
-//            .queryExecution.executedPlan)
-          val res2 = res.where(s"$expected_row_idx_col != ${FileFormat.ROW_INDEX}")
-          println(s"PLAN === ${res2.queryExecution.executedPlan}")
-
-          checkAnswer(df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}"),
-            writeDf.withColumn(FileFormat.ROW_INDEX, $"$expected_row_idx_col"))
-
-          // assert(res2.collect().length == 0)
-
-
-//          assert(res.where(s"$expected_row_id_col == ${FileFormat.ROW_INDEX}").count
-//            == df.count())
+            .where(s"$expected_row_idx_col != ${FileFormat.ROW_INDEX}")
+          assert(res.count() == 0)
         }
       }
     }
   }
 
   test("supported file format - read _metadata struct") {
-    withReadDataFrame("parquet") { case (_: DataFrame, df: DataFrame) =>
+    withReadDataFrame("parquet") { df =>
       val withMetadataStruct = df.select("*", FileFormat.METADATA_NAME)
 
       // `_metadata.row_index` column is present when selecting `_metadata` as a whole.
@@ -111,7 +97,7 @@ class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession 
   }
 
   test("unsupported file format - read _metadata struct") {
-    withReadDataFrame("orc") { case (_: DataFrame, df: DataFrame) =>
+    withReadDataFrame("orc") { df =>
       val withMetadataStruct = df.select("*", FileFormat.METADATA_NAME)
 
       // Metadata struct can be read without an error.
@@ -125,7 +111,7 @@ class FileMetadataStructRowIndexSuite extends QueryTest with SharedSparkSession 
   }
 
   test("unsupported file format - read _metadata.row_index") {
-    withReadDataFrame("orc") { case (_: DataFrame, df: DataFrame) =>
+    withReadDataFrame("orc") { df =>
       val ex = intercept[AnalysisException] {
         df.select("*", s"${FileFormat.METADATA_NAME}.${FileFormat.ROW_INDEX}")
       }
