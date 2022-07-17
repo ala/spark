@@ -92,6 +92,9 @@ case class HashAggregateExec(
     val aggTime = longMetric("aggTime")
     val numTasksFallBacked = longMetric("numTasksFallBacked")
 
+    println(s"child: $child ${child.getClass.getCanonicalName}")
+    println(s"Child's output: ${child.output} = ${child.output.size}")
+
     child.execute().mapPartitionsWithIndex { (partIndex, iter) =>
 
       val beforeAgg = System.nanoTime()

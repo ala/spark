@@ -376,12 +376,25 @@ class ParquetFileFormat
           val fullSchema = requiredSchema.toAttributes ++ partitionSchema.toAttributes
           val unsafeProjection = GenerateUnsafeProjection.generate(fullSchema, fullSchema)
 
+          println(s"fullSchema : $fullSchema")
+          println(s"parittionSchema : $partitionSchema")
+
           if (partitionSchema.length == 0) {
             // There is no partition columns
-            iter.map(unsafeProjection)
+            iter.map { r =>
+              println(s"row before: $r ${r.numFields}")
+              val a = unsafeProjection(r)
+              println(s"row after: $a ${a.numFields}")
+              a
+            }
           } else {
             val joinedRow = new JoinedRow()
-            iter.map(d => unsafeProjection(joinedRow(d, file.partitionValues)))
+            iter.map { d =>
+              println(s"partitioned row before: $d ${d.numFields}")
+              val a = unsafeProjection(joinedRow(d, file.partitionValues))
+              println(s"partitioned row after: $a ${a.numFields}")
+              a
+            }
           }
         } catch {
           case e: Throwable =>

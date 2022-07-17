@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.catalyst.expressions.codegen
 
+import java.io.{ByteArrayOutputStream, PrintStream}
+
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.BindReferences.bindReferences
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
@@ -52,6 +54,7 @@ object GenerateUnsafeProjection extends CodeGenerator[Seq[Expression], UnsafePro
       index: String,
       schemas: Seq[Schema],
       rowWriter: String): String = {
+    (new Throwable()).printStackTrace()
     // Puts `input` in a local variable to avoid to re-evaluate it if it's a statement.
     val tmpInput = ctx.freshName("tmpInput")
     val fieldEvals = schemas.zipWithIndex.map { case (Schema(dt, nullable), i) =>
@@ -337,6 +340,8 @@ object GenerateUnsafeProjection extends CodeGenerator[Seq[Expression], UnsafePro
     val ctx = newCodeGenContext()
     val eval = createCode(ctx, expressions, subexpressionEliminationEnabled)
 
+    val randomNumber = System.nanoTime() % 10000
+
     val codeBody =
       s"""
          |public java.lang.Object generate(Object[] references) {
@@ -363,8 +368,14 @@ object GenerateUnsafeProjection extends CodeGenerator[Seq[Expression], UnsafePro
          |  }
          |
          |  public UnsafeRow apply(InternalRow ${ctx.INPUT_ROW}) {
-         |    ${eval.code}
-         |    return ${eval.value};
+         |    try {
+         |      ${eval.code}
+         |      return ${eval.value};
+         |    } catch (java.lang.AssertionError e) {
+         |      System.out.println("Apply on " + ${ctx.INPUT_ROW} + " in projection " +
+      $randomNumber + " crapped" + " out");
+         |      throw e;
+         |    }
          |  }
          |
          |  ${ctx.declareAddedFunctions()}
@@ -373,7 +384,12 @@ object GenerateUnsafeProjection extends CodeGenerator[Seq[Expression], UnsafePro
 
     val code = CodeFormatter.stripOverlappingComments(
       new CodeAndComment(codeBody, ctx.getPlaceHolderToComments()))
-    logDebug(s"code for ${expressions.mkString(",")}:\n${CodeFormatter.format(code)}")
+    val stream = new ByteArrayOutputStream()
+    val printStream = new PrintStream(stream)
+    new Throwable().printStackTrace(printStream);
+
+    logWarning(s"code for ${expressions.mkString(",")}:\n${CodeFormatter.format(code)}" +
+      s" generated from ${stream.toString}")
 
     val (clazz, _) = CodeGenerator.compile(code)
     clazz.generate(ctx.references.toArray).asInstanceOf[UnsafeProjection]

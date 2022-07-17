@@ -128,11 +128,13 @@ trait FileFormat {
       filters: Seq[Filter],
       options: Map[String, String],
       hadoopConf: Configuration): PartitionedFile => Iterator[InternalRow] = {
+    println(s"buildReaderWithPartitionValues called as it happens")
     val dataReader = buildReader(
       sparkSession, dataSchema, partitionSchema, requiredSchema, filters, options, hadoopConf)
 
     new (PartitionedFile => Iterator[InternalRow]) with Serializable {
       private val fullSchema = requiredSchema.toAttributes ++ partitionSchema.toAttributes
+      println(s"buildReaderWithPartitionValues $fullSchema")
 
       // Using lazy val to avoid serialization
       private lazy val appendPartitionColumns =
@@ -147,7 +149,10 @@ trait FileFormat {
         // `UnsafeRow`s.
         if (partitionSchema.isEmpty) {
           dataReader(file).map { dataRow =>
-            converter(dataRow)
+            println(s"source $dataRow with ${dataRow.numFields}")
+            val res = converter(dataRow)
+            println(s"result $res with ${res.numFields}")
+            res
           }
         } else {
           val joinedRow = new JoinedRow()

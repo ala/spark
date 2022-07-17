@@ -71,6 +71,7 @@ class FileScanRDD(
     readFunction: (PartitionedFile) => Iterator[InternalRow],
     @transient val filePartitions: Seq[FilePartition],
     val readDataSchema: StructType,
+    val partitionSchema: StructType = new StructType(),
     val metadataColumns: Seq[AttributeReference] = Seq.empty,
     options: FileSourceOptions = new FileSourceOptions(CaseInsensitiveMap(Map.empty)))
   extends RDD[InternalRow](sparkSession.sparkContext, Nil) {
@@ -129,7 +130,14 @@ class FileScanRDD(
       // an unsafe projection to convert a joined internal row to an unsafe row
       private lazy val projection = {
         val joinedExpressions =
-          readDataSchema.fields.map(_.dataType) ++ metadataColumns.map(_.dataType)
+          readDataSchema.fields.map(_.dataType) ++ partitionSchema.map(_.dataType) ++
+            metadataColumns.map(_.dataType)
+        // readDataSchema nie ma tutaj parittion values
+        println(s"private lazy val projection: " +
+          s"readDataSchema ${readDataSchema.fields.map(_.name).toList} " +
+          s"partitionSchema ${partitionSchema.fields.map(_.name)} " +
+          s"metadataColumns $metadataColumns " +
+          s"joinedExpressions ${joinedExpressions.map(_.simpleString).toList}")
         UnsafeProjection.create(joinedExpressions)
       }
 
@@ -148,6 +156,7 @@ class FileScanRDD(
         if (metadataColumns.nonEmpty && currentFile != null) {
           updateMetadataInternalRow(metadataRow, metadataColumns.map(_.name),
             new Path(currentFile.filePath), currentFile.fileSize, currentFile.modificationTime)
+          println(s"Per file medata: $metadataRow ${metadataRow.numFields}")
         }
 
       private val rowIndexUpdater =
@@ -196,10 +205,23 @@ class FileScanRDD(
               c.numRows())
             case u: UnsafeRow =>
               rowIndexUpdater.foreach(_.update(u, metadataRow))
-              projection.apply(new JoinedRow(u, metadataRow))
+              println(s"addMetadataColumnsIfNeeded (unsafe) $u ${u.numFields} $metadataRow " +
+                s"${metadataRow.numFields}")
+              val result = projection.apply(new JoinedRow(u, metadataRow))
+              assert(result.numFields == new JoinedRow(u, metadataRow).numFields)
+              println(s"addMetadataColumnsIfNeeded (unsafe) after $result ${result.numFields} " +
+                s"readSchema: $readDataSchema " +
+                s"metadata: $metadataColumns")
+              result
             case i: InternalRow =>
               rowIndexUpdater.foreach(_.update(i, metadataRow))
-              new JoinedRow(i, metadataRow)
+              println(s"addMetadataColumnsIfNeeded (internal) $i ${i.numFields} $metadataRow " +
+                s"${metadataRow.numFields}")
+              val result = new JoinedRow(i, metadataRow)
+              println(s"addMetadataColumnsIfNeeded (internal) after $result ${result.numFields} " +
+                s"readSchema: $readDataSchema " +
+                s"metadata: $metadataColumns")
+              result
           }
         } else {
           nextElement

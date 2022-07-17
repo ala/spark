@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution
 
+import java.io.{ByteArrayOutputStream, PrintStream}
 import java.util.concurrent.{Future => JFuture}
 import java.util.concurrent.TimeUnit._
 
@@ -90,7 +91,16 @@ case class ProjectExec(projectList: Seq[NamedExpression], child: SparkPlan)
      """.stripMargin
   }
 
+  val whereWasICreated = {
+    val stream = new ByteArrayOutputStream()
+    val printStream = new PrintStream(stream)
+    new Throwable().printStackTrace(printStream);
+    stream.toString
+  }
+
   protected override def doExecute(): RDD[InternalRow] = {
+    println(s"ProjectExec.doExecute projectList = $projectList  child.output = ${child.output} " +
+    s"my stack: $whereWasICreated and my child: $child")
     child.execute().mapPartitionsWithIndexInternal { (index, iter) =>
       val project = UnsafeProjection.create(projectList, child.output)
       project.initialize(index)
