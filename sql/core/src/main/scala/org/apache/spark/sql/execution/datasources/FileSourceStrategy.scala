@@ -26,7 +26,6 @@ import org.apache.spark.sql.catalyst.planning.ScanOperation
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.execution.{FileSourceScanExec, SparkPlan}
 import org.apache.spark.sql.execution.datasources.FileFormat.METADATA_NAME
-import org.apache.spark.sql.execution.datasources.parquet.RowIndexGenerator
 import org.apache.spark.sql.types.{DoubleType, FloatType, LongType, StructType}
 import org.apache.spark.util.collection.BitSet
 
@@ -221,7 +220,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
         metadataColumns.map(_.name).flatMap {
           case FileFormat.ROW_INDEX =>
             assert(fsRelation.fileFormat.supportRowIndexes())
-            Some(AttributeReference(RowIndexGenerator.ROW_INDEX_COLUMN_NAME, LongType)())
+            Some(AttributeReference(FileFormat.ROW_INDEX_TEMPORARY_COLUMN_NAME, LongType)())
           case _ => None
         }
 

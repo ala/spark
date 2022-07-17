@@ -367,7 +367,7 @@ class ParquetFileFormat
         } else {
           new ParquetRecordReader[InternalRow](readSupport)
         }
-        val readerWithRowIndexes = RowIndexGenerator.addRowIndexToRecordReader(reader,
+        val readerWithRowIndexes = RowIndexUtil.addRowIndexToRecordReader(reader,
             requiredSchema)
         val iter = new RecordReaderIterator[InternalRow](readerWithRowIndexes)
         try {

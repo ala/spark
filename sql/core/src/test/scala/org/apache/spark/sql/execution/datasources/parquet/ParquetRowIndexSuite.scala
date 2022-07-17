@@ -171,7 +171,7 @@ class ParquetRowIndexSuite extends QueryTest with SharedSparkSession {
     test (s"$label - ${conf.desc}") {
       withSQLConf(conf.sqlConfs: _*) {
         withTempPath { path =>
-          val rowIndexColName = RowIndexGenerator.ROW_INDEX_COLUMN_NAME
+          val rowIndexColName = RowIndexUtil.ROW_INDEX_COLUMN_NAME
           val numRecordsPerFile = conf.numRows / conf.numFiles
           val (skipCentileFirst, skipCentileMidLeft, skipCentileMidRight, skipCentileLast) =
             (0.2, 0.4, 0.6, 0.8)
@@ -291,7 +291,7 @@ class ParquetRowIndexSuite extends QueryTest with SharedSparkSession {
       withSQLConf(conf.sqlConfs: _*) {
         withTempPath{ path =>
           val df = spark.range(0, 10, 1, 1).toDF("id")
-          val schemaWithRowIdx = df.schema.add(RowIndexGenerator.ROW_INDEX_COLUMN_NAME, StringType)
+          val schemaWithRowIdx = df.schema.add(RowIndexUtil.ROW_INDEX_COLUMN_NAME, StringType)
 
           df.write
             .format(conf.writeFormat)
@@ -303,7 +303,7 @@ class ParquetRowIndexSuite extends QueryTest with SharedSparkSession {
             .load(path.getAbsolutePath)
 
           val exception = intercept[Exception](dfRead.collect())
-          assert(exception.getMessage.contains(RowIndexGenerator.ROW_INDEX_COLUMN_NAME))
+          assert(exception.getMessage.contains(RowIndexUtil.ROW_INDEX_COLUMN_NAME))
         }
       }
     }

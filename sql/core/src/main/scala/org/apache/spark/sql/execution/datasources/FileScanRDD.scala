@@ -32,7 +32,6 @@ import org.apache.spark.sql.catalyst.expressions.{AttributeReference, GenericInt
 import org.apache.spark.sql.catalyst.util.CaseInsensitiveMap
 import org.apache.spark.sql.errors.QueryExecutionErrors
 import org.apache.spark.sql.execution.datasources.FileFormat._
-import org.apache.spark.sql.execution.datasources.parquet.RowIndexGenerator
 import org.apache.spark.sql.execution.vectorized.ConstantColumnVector
 import org.apache.spark.sql.types.{LongType, StringType, StructType}
 import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
@@ -147,7 +146,7 @@ class FileScanRDD(
         }
 
       private val rowIndexUpdater =
-        RowIndexGenerator.getMetadataRowUpdater(readDataSchema, metadataColumns)
+        RowIndexUtil.getMetadataRowUpdater(readDataSchema, metadataColumns)
 
       /**
        * Create an array of constant column vectors containing all required metadata columns
@@ -175,7 +174,7 @@ class FileScanRDD(
             columnVector
           case ROW_INDEX =>
             // TODO(Ala): Optimize
-            val rowIdxCol = RowIndexGenerator.findColumnIndexInSchema(readDataSchema)
+            val rowIdxCol = RowIndexUtil.findColumnIndexInSchema(readDataSchema)
             assert(rowIdxCol >= 0)
             c.column(rowIdxCol)
         }.toArray
