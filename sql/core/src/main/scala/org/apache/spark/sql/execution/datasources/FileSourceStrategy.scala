@@ -246,35 +246,23 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           dataFilters,
           table.map(_.identifier))
 
-
-      println(s"metadataStructOpt = $metadataStructOpt")
       // extra Project node: wrap flat metadata columns to a metadata struct
       val withMetadataProjections = metadataStructOpt.map { metadataStruct =>
-        println("withMetadataProjections high road")
         val metadataAlias =
           Alias(CreateStruct(metadataColumns), METADATA_NAME)(exprId = metadataStruct.exprId)
-        val newOutput = scan.output.dropRight(metadataColumns.length) :+ metadataAlias
-        println(s"new output = $newOutput")
-        val dropRowIdx = newOutput.filter(_.name != FileFormat.ROW_INDEX_TEMPORARY_COLUMN_NAME)
-        println(s"drop row idx = $dropRowIdx")
-        execution.ProjectExec(dropRowIdx, scan)
-          // scan.output.dropRight(metadataColumns.length) :+ metadataAlias, scan)
+        execution.ProjectExec(
+          scan.output.dropRight(metadataColumns.length) :+ metadataAlias, scan)
       }.getOrElse(scan)
 
-      println(s"withMetadataProjections $withMetadataProjections")
-
       val afterScanFilter = afterScanFilters.toSeq.reduceOption(expressions.And)
-      println(s"afterScanFilter $afterScanFilter")
       val withFilter = afterScanFilter
         .map(execution.FilterExec(_, withMetadataProjections))
         .getOrElse(withMetadataProjections)
-      println(s"withFilter $withFilter")
       val withProjections = if (projects == withFilter.output) {
         withFilter
       } else {
         execution.ProjectExec(projects, withFilter)
       }
-      println(s"withProjections $withProjections")
 
       withProjections :: Nil
 

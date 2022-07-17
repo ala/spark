@@ -88,10 +88,7 @@ object RowIndexGenerator {
 
     override def getCurrentValue: InternalRow = {
       val row = parent.getCurrentValue
-      println(row.getClass.getCanonicalName)
-      println("before = " + row.toString + " num fields = " + row.numFields)
       row.setLong(rowIndexColumnIdx, parent.getCurrentRowIndex)
-      println("after = " + row.toString + " num fields = " + row.numFields)
       row
     }
 
