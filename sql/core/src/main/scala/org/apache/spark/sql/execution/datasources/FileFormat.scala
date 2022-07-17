@@ -237,13 +237,19 @@ object FileFormat {
           // while internally, the TimestampType `file_modification_time` is stored in microsecond
           row.update(i, fileModificationTime * 1000L)
         case ROW_INDEX =>
-          // TODO(Ala): Comment why
+          // Reserve the spot in the row for a LongType value. The metadata fields that have
+          // identical values for each row of the file are set by this function, while fields that
+          // have different values (such as row index) are set separately.
           row.update(i, -1L)
       }
     }
     row
   }
 
+  /**
+   * Does the given metadata column always contain identical values for all rows originating from
+   * the same file?
+   */
   def isConstantMetadataAttr(name: String): Boolean = name match {
     case FILE_PATH | FILE_NAME | FILE_SIZE | FILE_MODIFICATION_TIME => true
     case ROW_INDEX => false
