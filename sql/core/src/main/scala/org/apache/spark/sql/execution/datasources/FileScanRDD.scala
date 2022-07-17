@@ -135,16 +135,10 @@ class FileScanRDD(
         UnsafeProjection.create(joinedExpressions)
       }
 
-      class MetadataPerRowUpdater
-          (readSchema: StructField, metadataColumns: Seq[AttributeReference]) {
-
-        def updateRow(row: InternalRow, metadataRow: InternalRow) { }
-      }
-
       /**
-       * TODO(Different column):
-       * For each partitioned file, metadata columns for each record in the file are exactly same.
-       * Only update metadata row when `currentFile` is changed.
+       * The value of some of the metadata columns remains exactly the same for each record of
+       * a partitioned file. Only need to update their values in the metadata row when `currentFile`
+       * is changed.
        */
       private def updatePerFileMetadata(): Unit =
         if (metadataColumns.nonEmpty && currentFile != null) {
@@ -180,6 +174,7 @@ class FileScanRDD(
             columnVector.setLong(currentFile.modificationTime * 1000L)
             columnVector
           case ROW_INDEX =>
+            // TODO(Ala): Optimize
             val rowIdxCol = RowIndexGenerator.findColumnIndexInSchema(readDataSchema)
             assert(rowIdxCol >= 0)
             c.column(rowIdxCol)
