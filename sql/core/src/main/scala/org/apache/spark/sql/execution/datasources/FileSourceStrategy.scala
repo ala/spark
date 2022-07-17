@@ -227,12 +227,13 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
 
       val readDataColumns = dataColumns
           .filter(requiredAttributes.contains)
-          .filterNot(partitionColumns.contains) ++ fileFormatReaderGeneratedMetadataColumns
+          .filterNot(partitionColumns.contains)
 
-      val outputSchema = readDataColumns.toStructType
+      val outputSchema = (readDataColumns ++ fileFormatReaderGeneratedMetadataColumns).toStructType
 
       // outputAttributes should also include the metadata columns at the very end
-      val outputAttributes = readDataColumns ++ partitionColumns ++ metadataColumns
+      val outputAttributes = readDataColumns ++ fileFormatReaderGeneratedMetadataColumns ++
+        partitionColumns ++ metadataColumns
 
       val scan =
         FileSourceScanExec(
@@ -250,8 +251,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
         val metadataAlias =
           Alias(CreateStruct(metadataColumns), METADATA_NAME)(exprId = metadataStruct.exprId)
         execution.ProjectExec(
-          scan.output.dropRight(metadataColumns.length) :+ metadataAlias, scan)
-        // TODO(Ala): Filter out the temporary column, but only if we introduced it ourselves.
+          readDataColumns ++ partitionColumns :+ metadataAlias, scan)
       }.getOrElse(scan)
 
       val afterScanFilter = afterScanFilters.toSeq.reduceOption(expressions.And)
