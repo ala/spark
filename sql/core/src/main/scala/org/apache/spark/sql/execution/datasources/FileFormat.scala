@@ -181,11 +181,7 @@ trait FileFormat {
    * Create a file metadata struct column containing fields supported by the given file format.
    */
   def createFileMetadataCol: AttributeReference = {
-    var schema: StructType = new StructType()
-      .add(StructField(FileFormat.FILE_PATH, StringType))
-      .add(StructField(FileFormat.FILE_NAME, StringType))
-      .add(StructField(FileFormat.FILE_SIZE, LongType))
-      .add(StructField(FileFormat.FILE_MODIFICATION_TIME, TimestampType))
+    var schema: StructType = FileFormat.getBaseFileMetadataCol
     if (supportRowIndexes()) {
       schema = schema.add(StructField(FileFormat.ROW_INDEX, LongType))
     }
@@ -210,6 +206,18 @@ object FileFormat {
   val ROW_INDEX_TEMPORARY_COLUMN_NAME = s"_tmp_metadata_$ROW_INDEX"
 
   val METADATA_NAME = "_metadata"
+
+  /** Schema of metadata struct that can be produced by every file format. */
+  def getBaseFileMetadataCol: StructType = new StructType()
+    .add(StructField(FileFormat.FILE_PATH, StringType))
+    .add(StructField(FileFormat.FILE_NAME, StringType))
+    .add(StructField(FileFormat.FILE_SIZE, LongType))
+    .add(StructField(FileFormat.FILE_MODIFICATION_TIME, TimestampType))
+
+  /** Create a file metadata struct column containing fields supported by every format. */
+  def createBaseFileMetadataCol: AttributeReference = {
+    FileSourceMetadataAttribute(FileFormat.METADATA_NAME, getBaseFileMetadataCol)
+  }
 
   // create an internal row given required metadata fields and file information
   def createMetadataInternalRow(
