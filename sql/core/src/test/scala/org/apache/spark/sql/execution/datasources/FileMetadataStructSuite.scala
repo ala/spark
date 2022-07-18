@@ -30,6 +30,8 @@ import org.apache.spark.sql.types.{IntegerType, LongType, StringType, StructFiel
 
 class FileMetadataStructSuite extends QueryTest with SharedSparkSession {
 
+  import testImplicits._
+
   val data0: Seq[Row] = Seq(Row("jack", 24, Row(12345L, "uom")))
 
   val data1: Seq[Row] = Seq(Row("lily", 31, Row(54321L, "ucb")))
@@ -562,6 +564,30 @@ class FileMetadataStructSuite extends QueryTest with SharedSparkSession {
             sourceFileMetadata(METADATA_FILE_MODIFICATION_TIME))
         )
       )
+    }
+  }
+
+  Seq(true, false).foreach { useVectorizedReader =>
+    val label = if (useVectorizedReader) "reading batches" else "reading rows"
+    test(s"SPARK-39806: metadata for a partitioned table ($label)") {
+      withSQLConf(SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> useVectorizedReader.toString) {
+        withTempPath { dir =>
+          // Store dynamically partitioned data.
+          Seq(1 -> 1).toDF("a", "b").write.format("parquet").partitionBy("b")
+            .save(dir.getAbsolutePath)
+
+          // Identify the data file and its metadata.
+          // We expect there to be exactly one subdirectory containing exactly one parquet file.
+          val subdirectory = dir.listFiles().filter(_.isDirectory).head
+          val file = subdirectory.listFiles().filter(_.getName.endsWith(".parquet")).head
+          val expectedDf = Seq(1 -> 1).toDF("a", "b")
+            .withColumn(FileFormat.FILE_NAME, lit(file.getName))
+            .withColumn(FileFormat.FILE_SIZE, lit(file.length()))
+
+          checkAnswer(spark.read.parquet(dir.getAbsolutePath)
+            .select("*", METADATA_FILE_NAME, METADATA_FILE_SIZE), expectedDf)
+        }
+      }
     }
   }
 }

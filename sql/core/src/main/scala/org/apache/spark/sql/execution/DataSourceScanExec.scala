@@ -659,7 +659,7 @@ case class FileSourceScanExec(
     }
 
     new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions,
-      requiredSchema, relation.partitionSchema, metadataColumns,
+      new StructType(requiredSchema.fields ++ fsRelation.partitionSchema.fields), metadataColumns,
       new FileSourceOptions(CaseInsensitiveMap(relation.options)))
   }
 
@@ -720,7 +720,7 @@ case class FileSourceScanExec(
       FilePartition.getFilePartitions(relation.sparkSession, splitFiles, maxSplitBytes)
 
     new FileScanRDD(fsRelation.sparkSession, readFile, partitions,
-      requiredSchema, relation.partitionSchema, metadataColumns,
+      new StructType(requiredSchema.fields ++ fsRelation.partitionSchema.fields), metadataColumns,
       new FileSourceOptions(CaseInsensitiveMap(relation.options)))
   }
 
