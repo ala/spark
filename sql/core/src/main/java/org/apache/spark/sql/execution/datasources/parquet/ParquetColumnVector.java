@@ -94,6 +94,8 @@ final class ParquetColumnVector {
         throw new IllegalArgumentException("Cannot assign default column value to result " +
           "column batch in vectorized Parquet reader because the data type is not supported: " +
           defaultValue);
+      } else {
+        vector.setIsConstant();
       }
     }
 
