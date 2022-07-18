@@ -137,7 +137,7 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
   /**
    * Populates the row index column if needed.
    */
-  private RowIndexUtil rowIndexUtil = null;
+  private ParquetRowIndexUtil.RowIndexGenerator rowIndexUtil = null;
 
   /**
    * The memory mode of the columnarBatch
@@ -283,7 +283,7 @@ public class VectorizedParquetRecordReader extends SpecificParquetRecordReaderBa
       }
     }
 
-    rowIndexUtil = RowIndexUtil.createIfNeededForSchema(sparkSchema);
+    rowIndexUtil = ParquetRowIndexUtil.createGeneratorIfNeeded(sparkSchema);
   }
 
   private void initBatch() {

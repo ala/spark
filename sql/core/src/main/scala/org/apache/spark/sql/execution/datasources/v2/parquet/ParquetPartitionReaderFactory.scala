@@ -294,7 +294,8 @@ case class ParquetPartitionReaderFactory(
     } else {
       new ParquetRecordReader[InternalRow](readSupport)
     }
-    val readerWithRowIndexes = RowIndexUtil.addRowIndexToRecordReader(reader, readDataSchema)
+    val readerWithRowIndexes = ParquetRowIndexUtil.addRowIndexToRecordReaderIfNeeded(
+      reader, readDataSchema)
     val iter = new RecordReaderIterator(readerWithRowIndexes)
     // SPARK-23457 Register a task completion listener before `initialization`.
     taskContext.foreach(_.addTaskCompletionListener[Unit](_ => iter.close()))

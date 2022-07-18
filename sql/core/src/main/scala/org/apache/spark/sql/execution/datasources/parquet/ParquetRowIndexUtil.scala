@@ -16,9 +16,9 @@
  */
 package org.apache.spark.sql.execution.datasources.parquet
 
-import scala.collection.JavaConverters._
-
 import java.io.IOException
+
+import scala.collection.JavaConverters._
 
 import org.apache.hadoop.mapreduce.{InputSplit, RecordReader, TaskAttemptContext}
 import org.apache.parquet.column.page.PageReadStore
@@ -35,7 +35,7 @@ object ParquetRowIndexUtil {
   /**
    * Generate row indexes for vectorized readers.
   */
-  private class RowIndexGenerator(rowIndexColumnIdx: Int) {
+  class RowIndexGenerator(rowIndexColumnIdx: Int) {
     var rowIndexIterator: Iterator[Long] = _
 
     /** For Parquet only: initialize the generator using provided PageReadStore. */
