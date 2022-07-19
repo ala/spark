@@ -661,6 +661,7 @@ case class FileSourceScanExec(
     new FileScanRDD(fsRelation.sparkSession, readFile, filePartitions,
       new StructType(requiredSchema.fields ++ fsRelation.partitionSchema.fields), metadataColumns,
       new FileSourceOptions(CaseInsensitiveMap(relation.options)))
+
   }
 
   /**

@@ -228,7 +228,7 @@ class FileMetadataStructSuite extends QueryTest with SharedSparkSession {
     assert(ex.getMessage.contains("No such struct field file_name in id, university"))
   }
 
-  metadataColumnsTest("select only metadata columns", schema) { (df, f0, f1) =>
+  metadataColumnsTest("select only metadata", schema) { (df, f0, f1) =>
     checkAnswer(
       df.select(METADATA_FILE_NAME, METADATA_FILE_PATH,
         METADATA_FILE_SIZE, METADATA_FILE_MODIFICATION_TIME),
@@ -239,17 +239,13 @@ class FileMetadataStructSuite extends QueryTest with SharedSparkSession {
           f1(METADATA_FILE_SIZE), f1(METADATA_FILE_MODIFICATION_TIME))
       )
     )
-  }
-
-  metadataColumnsTest("select only metadata struct", schema) {
-    (df, f0, f1) =>
-      checkAnswer(
-        df.select("_metadata"),
-        Seq(
-          Row(getMetadataRow(f0)),
-          Row(getMetadataRow(f1))
-        )
+    checkAnswer(
+      df.select("_metadata"),
+      Seq(
+        Row(getMetadataRow(f0)),
+        Row(getMetadataRow(f1))
       )
+    )
   }
 
   metadataColumnsTest("select and re-select", schema) { (df, f0, f1) =>

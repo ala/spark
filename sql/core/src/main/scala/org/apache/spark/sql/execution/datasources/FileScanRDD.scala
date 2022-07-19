@@ -137,7 +137,7 @@ class FileScanRDD(
        * a partitioned file. Only need to update their values in the metadata row when `currentFile`
        * is changed.
        */
-      private def updatePerFileMetadata(): Unit =
+      private def updateMetadataRow(): Unit =
         if (metadataColumns.nonEmpty && currentFile != null) {
           updateMetadataInternalRow(metadataRow, metadataColumns.map(_.name),
             new Path(currentFile.filePath), currentFile.fileSize, currentFile.modificationTime)
@@ -180,10 +180,8 @@ class FileScanRDD(
             case c: ColumnarBatch => new ColumnarBatch(
               Array.tabulate(c.numCols())(c.column) ++ createMetadataColumnVector(c),
               c.numRows())
-            case u: UnsafeRow =>
-              projection.apply(new JoinedRow(u, metadataRow))
-            case i: InternalRow =>
-              new JoinedRow(i, metadataRow)
+            case u: UnsafeRow => projection.apply(new JoinedRow(u, metadataRow))
+            case i: InternalRow => new JoinedRow(i, metadataRow)
           }
         } else {
           nextElement
@@ -222,7 +220,7 @@ class FileScanRDD(
       private def nextIterator(): Boolean = {
         if (files.hasNext) {
           currentFile = files.next()
-          updatePerFileMetadata()
+          updateMetadataRow()
           logInfo(s"Reading File $currentFile")
           // Sets InputFileBlockHolder for the file block's information
           InputFileBlockHolder.set(currentFile.filePath, currentFile.start, currentFile.length)
@@ -290,7 +288,7 @@ class FileScanRDD(
           }
         } else {
           currentFile = null
-          updatePerFileMetadata()
+          updateMetadataRow()
           InputFileBlockHolder.unset()
           false
         }
