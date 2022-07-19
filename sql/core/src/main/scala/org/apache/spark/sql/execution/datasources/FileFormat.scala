@@ -180,13 +180,8 @@ trait FileFormat {
   /**
    * Create a file metadata struct column containing fields supported by the given file format.
    */
-  def createFileMetadataCol: AttributeReference = {
-    var schema: StructType = FileFormat.getBaseFileMetadataCol
-    if (supportRowIndexes()) {
-      schema = schema.add(StructField(FileFormat.ROW_INDEX, LongType))
-    }
-    FileSourceMetadataAttribute(FileFormat.METADATA_NAME, schema)
-  }
+  def createFileMetadataCol: AttributeReference =
+    FileFormat.createBaseFileMetadataCol
 }
 
 object FileFormat {
