@@ -172,12 +172,6 @@ trait FileFormat {
   def supportFieldName(name: String): Boolean = true
 
   /**
-   * Returns whether this format is capable of populating column ROW_INDEX_TEMPORARY_COLUMN_NAME
-   * with row indexes.
-   */
-  def supportRowIndexes(): Boolean = false
-
-  /**
    * Create a file metadata struct column containing fields supported by the given file format.
    */
   def createFileMetadataCol: AttributeReference =
