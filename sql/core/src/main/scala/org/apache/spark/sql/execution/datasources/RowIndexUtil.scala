@@ -16,8 +16,6 @@
  */
 package org.apache.spark.sql.execution.datasources
 
-import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.AttributeReference
 import org.apache.spark.sql.types.{LongType, StructField, StructType}
 
 
@@ -38,26 +36,5 @@ object RowIndexUtil {
 
   def isNeededForSchema(sparkSchema: StructType): Boolean = {
     findColumnIndexInSchema(sparkSchema) >= 0
-  }
-
-  /**
-   * Helper class for updating row index value in the metadata row, that otherwise remains
-   * constant for all the records read from the same file.
-   */
-  class MetadataRowUpdater(readRowColIdx: Int, metadataRowColIdx: Int) {
-    def update(readRow: InternalRow, metadataRow: InternalRow): Unit = {
-      metadataRow.update(metadataRowColIdx, readRow.getLong(readRowColIdx))
-    }
-  }
-
-  def getMetadataRowUpdater(
-      readRowSchema: StructType,
-      metadataColumns: Seq[AttributeReference]): Option[MetadataRowUpdater] = {
-    metadataColumns.zipWithIndex.find(_._1.name == FileFormat.ROW_INDEX)
-      .map { case (_, metadataRowColIdx) =>
-        val readRowColIdx = findColumnIndexInSchema(readRowSchema)
-        assert(readRowColIdx >= 0)
-        new MetadataRowUpdater(readRowColIdx, metadataRowColIdx)
-      }
   }
 }
