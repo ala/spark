@@ -79,7 +79,7 @@ class FileMetadataStructSuite extends QueryTest with SharedSparkSession {
       METADATA_FILE_SIZE -> f.length(),
       METADATA_FILE_MODIFICATION_TIME -> new Timestamp(f.lastModified()),
       METADATA_ROW_INDEX -> 0,
-      FILE_FORMAT -> f.getName.split(".").last
+      FILE_FORMAT -> f.getName.split("\\.").last
     )
   }
 

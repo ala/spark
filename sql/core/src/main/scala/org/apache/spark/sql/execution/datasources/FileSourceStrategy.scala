@@ -223,6 +223,9 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
           case _ => None
         }
 
+      val fileConstantMetadataColumns: Seq[Attribute] =
+        metadataColumns.filter(_.name != FileFormat.ROW_INDEX)
+
       val readDataColumns = dataColumns
           .filter(requiredAttributes.contains)
           .filterNot(partitionColumns.contains)
@@ -231,7 +234,7 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
 
       // outputAttributes should also include the metadata columns at the very end
       val outputAttributes = readDataColumns ++ fileFormatReaderGeneratedMetadataColumns ++
-        partitionColumns ++ metadataColumns
+        partitionColumns ++ fileConstantMetadataColumns
 
       val scan =
         FileSourceScanExec(
@@ -246,8 +249,18 @@ object FileSourceStrategy extends Strategy with PredicateHelper with Logging {
 
       // extra Project node: wrap flat metadata columns to a metadata struct
       val withMetadataProjections = metadataStructOpt.map { metadataStruct =>
+        val structColumns = metadataColumns.map { col => col.name match {
+            case FileFormat.FILE_PATH | FileFormat.FILE_NAME | FileFormat.FILE_SIZE |
+                 FileFormat.FILE_MODIFICATION_TIME =>
+              col
+            case FileFormat.ROW_INDEX =>
+              fileFormatReaderGeneratedMetadataColumns
+                .filter(_.name == FileFormat.ROW_INDEX_TEMPORARY_COLUMN_NAME)
+                .head.withName(FileFormat.ROW_INDEX)
+          }
+        }
         val metadataAlias =
-          Alias(CreateStruct(metadataColumns), METADATA_NAME)(exprId = metadataStruct.exprId)
+          Alias(CreateStruct(structColumns), METADATA_NAME)(exprId = metadataStruct.exprId)
         execution.ProjectExec(
           readDataColumns ++ partitionColumns :+ metadataAlias, scan)
       }.getOrElse(scan)

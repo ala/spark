@@ -180,8 +180,8 @@ class FileScanRDD(
             // while internally, the TimestampType is stored in microsecond
             columnVector.setLong(currentFile.modificationTime * 1000L)
             columnVector
-          case ROW_INDEX =>
-            c.column(rowIndexColumnIndex)
+//          case ROW_INDEX =>
+//            c.column(rowIndexColumnIndex)
         }.toArray
       }
 
@@ -196,10 +196,10 @@ class FileScanRDD(
               Array.tabulate(c.numCols())(c.column) ++ createMetadataColumnVector(c),
               c.numRows())
             case u: UnsafeRow =>
-              rowIndexUpdater.foreach(_.update(u, metadataRow))
+//              rowIndexUpdater.foreach(_.update(u, metadataRow))
               projection.apply(new JoinedRow(u, metadataRow))
             case i: InternalRow =>
-              rowIndexUpdater.foreach(_.update(i, metadataRow))
+//              rowIndexUpdater.foreach(_.update(i, metadataRow))
               new JoinedRow(i, metadataRow)
           }
         } else {
