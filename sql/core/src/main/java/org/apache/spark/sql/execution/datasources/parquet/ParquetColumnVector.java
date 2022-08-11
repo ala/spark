@@ -34,6 +34,7 @@ import org.apache.spark.sql.types.MapType;
 import org.apache.spark.sql.types.StructType;
 
 /**
+ * // Dummy comment to test if pushing into other people's branches in OSS works.
  * Contains necessary information representing a Parquet column, either of primitive or nested type.
  */
 final class ParquetColumnVector {
